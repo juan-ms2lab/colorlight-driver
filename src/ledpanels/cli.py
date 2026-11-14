@@ -28,6 +28,7 @@ DEFAULTS = {
     "color_order": "BGR",
     "flip_x": False,
     "flip_y": False,
+    "sync_gap": 0.001,
     "display": [],
     "host": "127.0.0.1",
     "port": 8080,
@@ -236,7 +237,8 @@ def run(args, s):
             firmware = max((r.fw_major for r in found), default=0)
             print(f"Detected {len(found)} receiver(s), firmware major {firmware}")
         d = Display(s["interface"], s["width"], s["height"], level, firmware, s["color_order"],
-                    flip_x=s["flip_x"], flip_y=s["flip_y"], displays=s["display"])
+                    flip_x=s["flip_x"], flip_y=s["flip_y"],
+                    sync_gap=s["sync_gap"], displays=s["display"])
     with d:
         try:
             return dispatch(args, s, d)

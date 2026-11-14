@@ -63,6 +63,7 @@ Code layout:
 | `brightness` | percent, 0 to 100 |
 | `firmware` | receiver firmware major version, 0 detects it |
 | `color_order`, `flip_x`, `flip_y` | wiring corrections |
+| `sync_gap` | seconds between the last pixel row and the sync (latch) packet, default 0.001; a Pi 3B+ needs 0.006 (see Troubleshooting) |
 | `[[display]]` | optional canvas-to-card mapping per physical display (see Display geometry); none = whole canvas at card (0, 0) |
 | `host`, `port` | web server bind address and port (0.0.0.0 lets phones connect) |
 | `media_dir`, `state_file` | where uploads and saved settings live |
@@ -225,6 +226,9 @@ Jobs for `/api/play`: `{"kind": "image|video", "name": "file", "fit": "contain|c
 - Phones cannot connect: they must be on the same network, `host` must be `0.0.0.0`, guest access must be open
   in the Guests tab, and port 8080 (plus UDP 5568 and 6454 for DMX) must be allowed in the firewall.
 - Another program is sending to the panels: only one sender may run at a time.
+- Rows of the second (chained) card tear or flicker: raise `sync_gap`. `send()` only queues the packets, so on a
+  slow NIC the sync can overtake the pixel rows still on the wire. A Raspberry Pi 3B+ (USB NIC, `lan78xx`) takes
+  about 5 ms to put a 1536x32 frame on the wire and needs `sync_gap = 0.006`; 0.001 tore the second card's rows.
 
 ## Notes
 

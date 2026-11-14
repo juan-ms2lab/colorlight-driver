@@ -8,6 +8,7 @@ firmware = 0          # 0 = auto-detect via discovery
 color_order = "BGR"
 flip_x = false
 flip_y = false
+sync_gap = 0.001     # seconds before the sync packet; Raspberry Pi 3B+ needs 0.006
 
 # Web control panel (serve / app).
 # 0.0.0.0 lets phones on the network reach the guest page, but only while you open guest

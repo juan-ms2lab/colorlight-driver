@@ -111,3 +111,15 @@ def test_display_entries_from_toml(tmp_path):
     s = cli.load_settings(cli.build_parser().parse_args(["-c", str(cfg), "clear"]))
     assert s["display"] == STRIPS
     assert cli.load_settings(cli.build_parser().parse_args(["-c", str(tmp_path / "none.toml"), "clear"]))["display"] == []
+
+
+def test_sync_gap_from_config(tmp_path, make, monkeypatch):
+    from ledpanels import cli
+    cfg = tmp_path / "ledpanels.toml"
+    cfg.write_text("sync_gap = 0.006\n")
+    s = cli.load_settings(cli.build_parser().parse_args(["-c", str(cfg), "clear"]))
+    assert s["sync_gap"] == 0.006
+    slept = []
+    monkeypatch.setattr(sender.time, "sleep", slept.append)
+    make(4, 1, sync_gap=s["sync_gap"]).show()
+    assert slept == [0.006]
