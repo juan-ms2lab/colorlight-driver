@@ -45,6 +45,51 @@ def _collect(rx: socket.socket):
             replies.append(r)
 
 
+def build_map(displays, width: int, height: int):
+    """Precompute where each canvas pixel goes in card space.
+
+    `displays` is a list of {"canvas": [x, y, w, h], "card": [cx, cy]} with optional `flip_x`, `flip_y`,
+    `reverse_panels` and `panel_width`. Returns (index, rows): `index` gathers the wire pixels from the
+    flattened canvas plus one trailing black pixel (index width * height, used for gaps), and `rows` lists
+    (card_y, card_x0, start, count) into it. Displays sharing a card row are merged into one contiguous run
+    from the leftmost x, because chained cards only showed the last display when they were sent apart.
+    """
+    blank = width * height
+    segments: dict[int, list] = {}
+    for n, d in enumerate(displays):
+        try:
+            x, y, w, h = (int(v) for v in d["canvas"])
+            cx, cy = (int(v) for v in d["card"])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError(f"display {n + 1} needs canvas = [x, y, w, h] and card = [x, y]")
+        if w <= 0 or h <= 0 or x < 0 or y < 0 or x + w > width or y + h > height:
+            raise ValueError(f"display {n + 1}: canvas region must lie inside the {width}x{height} canvas")
+        if cx < 0 or cy < 0 or cx + w > 0xFFFF or cy + h > 0xFFFF:
+            raise ValueError(f"display {n + 1}: card position out of range")
+        cols = np.arange(x, x + w)
+        if d.get("reverse_panels"):
+            pw = int(d.get("panel_width", 128))
+            if pw <= 0 or w % pw:
+                raise ValueError(f"display {n + 1}: width must be a multiple of panel_width")
+            cols = cols.reshape(-1, pw)[::-1].reshape(-1)
+        if d.get("flip_x"):
+            cols = cols[::-1]
+        for r in range(h):
+            src = y + (h - 1 - r if d.get("flip_y") else r)
+            segments.setdefault(cy + r, []).append((cx, src * width + cols))
+    index, rows, start = [], [], 0
+    for cy in sorted(segments):
+        segs = segments[cy]
+        x0 = min(cx for cx, _ in segs)
+        run = np.full(max(cx + len(c) for cx, c in segs) - x0, blank)
+        for cx, c in segs:
+            run[cx - x0 : cx - x0 + len(c)] = c
+        index.append(run)
+        rows.append((cy, x0, start, len(run)))
+        start += len(run)
+    return np.concatenate(index), rows
+
+
 class Display:
     """Full-canvas RGB display. Draw into `canvas`, then call `show()`."""
 
@@ -59,6 +104,7 @@ class Display:
         sync_gap: float = 0.001,
         flip_x: bool = False,
         flip_y: bool = False,
+        displays=None,
     ):
         self._flip_x = flip_x
         self._flip_y = flip_y
@@ -70,6 +116,9 @@ class Display:
         self.width = width
         self.height = height
         self.canvas = np.zeros((height, width, 3), np.uint8)
+        # Canvas regions of the physical displays (for test patterns); no entries = whole canvas at card (0, 0).
+        self._map = build_map(displays, width, height) if displays else None
+        self.regions = [tuple(d["canvas"]) for d in displays] if displays else [(0, 0, width, height)]
         self._order = ["RGB".index(c) for c in color_order.upper()]
         self._repeat = 2 if firmware >= 13 else 1  # v13+ wants brightness/sync twice
         self._sync_gap = sync_gap
@@ -134,8 +183,15 @@ class Display:
         send = self._sock.send
         for _ in range(self._repeat):
             send(self._brightness_pkt)
-        for pkt in proto.pixel_packets(out):
-            send(pkt)
+        if self._map is None:
+            for pkt in proto.pixel_packets(out):
+                send(pkt)
+        else:
+            index, rows = self._map
+            wire = np.concatenate([out.reshape(-1, 3), np.zeros((1, 3), np.uint8)])[index]
+            for y, x0, i, n in rows:
+                for pkt in proto.row_packets(y, x0, wire[i : i + n]):
+                    send(pkt)
         time.sleep(self._sync_gap)
         for _ in range(self._repeat):
             send(self._sync_pkt)

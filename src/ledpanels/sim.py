@@ -4,7 +4,8 @@ import numpy as np
 
 
 class SimDisplay:
-    def __init__(self, width: int, height: int):
+    def __init__(self, width: int, height: int, regions=None):
+        self.regions = [tuple(r) for r in regions] if regions else [(0, 0, width, height)]
         self.width = width
         self.height = height
         self.canvas = np.zeros((height, width, 3), np.uint8)

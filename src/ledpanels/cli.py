@@ -28,6 +28,7 @@ DEFAULTS = {
     "color_order": "BGR",
     "flip_x": False,
     "flip_y": False,
+    "display": [],
     "host": "127.0.0.1",
     "port": 8080,
     "media_dir": "media",
@@ -227,7 +228,7 @@ def run(args, s):
 
     level = round(255 * max(0, min(100, s["brightness"])) / 100)
     if args.simulate:
-        d = SimDisplay(s["width"], s["height"])
+        d = SimDisplay(s["width"], s["height"], [e["canvas"] for e in s["display"]])
     else:
         firmware = s["firmware"]
         if not firmware:
@@ -235,7 +236,7 @@ def run(args, s):
             firmware = max((r.fw_major for r in found), default=0)
             print(f"Detected {len(found)} receiver(s), firmware major {firmware}")
         d = Display(s["interface"], s["width"], s["height"], level, firmware, s["color_order"],
-                    flip_x=s["flip_x"], flip_y=s["flip_y"])
+                    flip_x=s["flip_x"], flip_y=s["flip_y"], displays=s["display"])
     with d:
         try:
             return dispatch(args, s, d)

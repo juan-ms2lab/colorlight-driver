@@ -63,10 +63,39 @@ Code layout:
 | `brightness` | percent, 0 to 100 |
 | `firmware` | receiver firmware major version, 0 detects it |
 | `color_order`, `flip_x`, `flip_y` | wiring corrections |
+| `[[display]]` | optional canvas-to-card mapping per physical display (see Display geometry); none = whole canvas at card (0, 0) |
 | `host`, `port` | web server bind address and port (0.0.0.0 lets phones connect) |
 | `media_dir`, `state_file` | where uploads and saved settings live |
 | `admin_pin` | enables remote admin login (or set `LEDPANELS_PIN`) |
 | `guest_max_seconds` | longest a guest's item runs before the panels blank |
+
+### Display geometry
+
+By default the canvas maps 1:1 onto the receiver cards' coordinate space from (0, 0). If your displays sit
+elsewhere in card space, or you want strips that are side by side on the cards stacked on the canvas, add one
+`[[display]]` entry per physical display. Each maps a canvas region `canvas = [x, y, w, h]` to the card position
+`card = [x, y]` of its top-left pixel, with optional `flip_x`, `flip_y` and `reverse_panels` (panel order
+reversed within each row, with `panel_width`, default 128). Canvas pixels outside every region are not sent.
+Example: two 768x32 strips that the cards address as one 1536-pixel row (card x 0-767 and 768-1535, rows 160-191),
+stacked into a 768x64 canvas:
+
+```toml
+width = 768
+height = 64
+
+[[display]]
+canvas = [0, 0, 768, 32]    # top strip
+card = [0, 160]
+
+[[display]]
+canvas = [0, 32, 768, 32]   # bottom strip
+card = [768, 160]
+```
+
+Rows of different displays that land on the same card row are merged into one run from the leftmost x (gaps are
+sent black), since chained cards only showed the second display when the rows were sent separately. The mapping
+is precomputed at startup. `ledpanels test border` and `test tiles` mark each display separately, so you can
+check order and orientation; the global `flip_x`/`flip_y` still apply to the whole canvas first.
 
 Saved settings (calibration, schedule, playlist, DMX, autoplay) are in `state.json`, which is not committed.
 

@@ -50,14 +50,17 @@ def build_discover(index: int) -> bytes:
 
 def pixel_packets(frame: np.ndarray):
     """Yield row packets for a contiguous (H, W, 3) uint8 frame in wire color order."""
-    height, width, _ = frame.shape
+    for y in range(frame.shape[0]):
+        yield from row_packets(y, 0, frame[y])
+
+
+def row_packets(y: int, x0: int, row: np.ndarray):
+    """Yield the packets for one card row of (N, 3) pixels starting at card column x0."""
     prefix = DST_MAC + SRC_MAC + bytes([TYPE_PIXELS])
-    for y in range(height):
-        row = frame[y]
-        for x0 in range(0, width, MAX_PIXELS_PER_PACKET):
-            chunk = row[x0 : x0 + MAX_PIXELS_PER_PACKET]
-            head = struct.pack(">HHHBB", y, x0, len(chunk), 0x08, 0x88)
-            yield prefix + head + chunk.tobytes()
+    for i in range(0, len(row), MAX_PIXELS_PER_PACKET):
+        chunk = row[i : i + MAX_PIXELS_PER_PACKET]
+        head = struct.pack(">HHHBB", y, x0 + i, len(chunk), 0x08, 0x88)
+        yield prefix + head + chunk.tobytes()
 
 
 @dataclass

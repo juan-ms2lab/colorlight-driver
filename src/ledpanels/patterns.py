@@ -9,26 +9,38 @@ import numpy as np
 from .timing import hold, pause, running
 
 
+def _regions(display):
+    return getattr(display, "regions", None) or [(0, 0, display.width, display.height)]
+
+
 def border(display):
-    """White border, corners marked: top-left red, top-right green, bottom-left blue, bottom-right yellow."""
-    c = display.canvas
-    c[:] = 0
-    c[0, :] = c[-1, :] = c[:, 0] = c[:, -1] = 255
-    c[0, 0] = (255, 0, 0)
-    c[0, -1] = (0, 255, 0)
-    c[-1, 0] = (0, 0, 255)
-    c[-1, -1] = (255, 255, 0)
+    """White border around each display, corners marked: top-left red, top-right green, bottom-left blue,
+    bottom-right yellow."""
+    display.canvas[:] = 0
+    for x, y, w, h in _regions(display):
+        c = display.canvas[y : y + h, x : x + w]
+        c[0, :] = c[-1, :] = c[:, 0] = c[:, -1] = 255
+        c[0, 0] = (255, 0, 0)
+        c[0, -1] = (0, 255, 0)
+        c[-1, 0] = (0, 0, 255)
+        c[-1, -1] = (255, 255, 0)
     display.show()
 
 
 def tiles(display, size: int = 128):
-    """Number each size x size tile with a frame and a large digit to reveal flips and rotations."""
+    """Number each tile (size x size, capped at the display height) of each display with a frame and a large
+    digit to reveal flips, rotations and the display order."""
     display.clear()
-    for i, x in enumerate(range(0, display.width, size)):
-        cv2.rectangle(display.canvas, (x, 0), (x + size - 1, size - 1), (0, 80, 255), 1)
-        cv2.putText(display.canvas, str(i + 1), (x + 30, size - 25), cv2.FONT_HERSHEY_SIMPLEX,
-                    3, (255, 255, 255), 6)
-        cv2.putText(display.canvas, "TOP", (x + 8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 1)
+    c, i = display.canvas, 0
+    for rx, ry, rw, rh in _regions(display):
+        s = min(size, rh)
+        for x in range(rx, rx + rw, s):
+            i += 1
+            cv2.rectangle(c, (x, ry), (x + s - 1, ry + s - 1), (0, 80, 255), 1)
+            cv2.putText(c, str(i), (x + s * 30 // 128, ry + s - s * 25 // 128), cv2.FONT_HERSHEY_SIMPLEX,
+                        3 * s / 128, (255, 255, 255), max(1, 6 * s // 128))
+            cv2.putText(c, "TOP", (x + 8, ry + max(12, 20 * s // 128)), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6 * max(s, 64) / 128, (255, 255, 0), 1)
     display.show()
 
 

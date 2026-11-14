@@ -19,3 +19,9 @@ media_dir = "media"
 state_file = "state.json"
 # admin_pin = ""
 guest_max_seconds = 300   # longest a guest's item runs before the panels blank
+
+# Optional: map canvas regions to receiver-card positions, one [[display]] per physical display
+# (see "Display geometry" in the README). Without entries the canvas starts at card (0, 0).
+# [[display]]
+# canvas = [0, 0, 768, 32]   # x, y, w, h on the canvas
+# card = [0, 160]            # x, y in card space
