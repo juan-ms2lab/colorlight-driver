@@ -20,6 +20,8 @@ media_dir = "media"
 state_file = "state.json"
 # admin_pin = ""
 guest_max_seconds = 300   # longest a guest's item runs before the panels blank
+# DDP frame input for external apps (UDP, no authentication; listens on `host`). 0 = off, 4048 = standard.
+ddp_port = 0
 
 # Optional: map canvas regions to receiver-card positions, one [[display]] per physical display
 # (see "Display geometry" in the README). Without entries the canvas starts at card (0, 0).

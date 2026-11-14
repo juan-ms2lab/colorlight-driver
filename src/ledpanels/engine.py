@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from . import animations, dmx, fonts, games, media, patterns
-from .timing import hold, pause
+from .timing import hold, pause, running
 
 KINDS = {"image", "video", "pattern", "text", "clock", "fill", "paint", "playlist", "camera", "dmx", "game"}
 FITS = {"contain", "cover", "stretch"}
@@ -87,8 +87,11 @@ def validate(item, media_dir, in_playlist: bool = False):
             validate(sub, media_dir, in_playlist=True)
 
 
-def run_item(display, item, media_dir, stop, in_playlist: bool = False):
-    """Run one validated job until it ends, `stop` is set or its duration passes."""
+def run_item(display, item, media_dir, stop, in_playlist: bool = False, wake=None):
+    """Run one validated job until it ends, `stop` is set or its duration passes.
+
+    `wake` (an Event) lets a paint job show a new live frame at once instead of on its next resend.
+    """
     kind = item["kind"]
     duration = item.get("duration")
     if duration is None and in_playlist and (kind not in ("video",) or item.get("loop")):
@@ -123,7 +126,11 @@ def run_item(display, item, media_dir, stop, in_playlist: bool = False):
         display.canvas[:] = color
         hold(display.show, stop, deadline)
     elif kind == "paint":
-        hold(display.show, stop, deadline, interval=0.05)
+        wake = wake or threading.Event()
+        while running(stop, deadline):
+            display.show()
+            wake.wait(0.05)
+            wake.clear()
     elif kind == "playlist":
         while not stop.is_set():
             started = time.monotonic()
@@ -164,6 +171,8 @@ class Player:
         self._error = None
         self._worker = None
         self._stop = threading.Event()
+        self._painted = threading.Event()
+        self.ddp = None  # ddp.DdpInput when enabled, for status
         self._lock = threading.RLock()
         self._closing = threading.Event()
         self._load_state()
@@ -214,6 +223,13 @@ class Player:
                 self._job, self._ended = {"kind": "paint"}, None
                 self._launch()
             self.display.canvas[:] = frame
+            self._painted.set()
+
+    def end_paint(self):
+        """Blank the panels if live paint is still what is showing (live input stopped)."""
+        with self._lock:
+            if self._job and self._job["kind"] == "paint":
+                self.stop()
 
     def set_brightness(self, percent: int, save: bool = True):
         self.brightness = max(0, min(100, int(percent)))
@@ -273,6 +289,7 @@ class Player:
                 "autoplay": self.autoplay,
                 "dmx_config": self.dmx_cfg,
                 "dmx": dmx.status(),
+                "ddp": self.ddp.status() if self.ddp else None,
                 "game": games.status(),
                 "width": self.display.width,
                 "height": self.display.height,
@@ -315,7 +332,7 @@ class Player:
         try:
             while not stop.is_set():
                 try:
-                    run_item(self.display, job, self.media_dir, stop)
+                    run_item(self.display, job, self.media_dir, stop, wake=self._painted)
                     return
                 except OSError as e:
                     # Cable pulled or interface gone: keep retrying until it comes back.

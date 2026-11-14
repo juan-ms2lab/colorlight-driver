@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import access, animations, dmx, engine, media, patterns, timing, web
+from . import access, animations, ddp, dmx, engine, media, patterns, timing, web
 from .sender import Display, discover
 from .sim import SimDisplay
 
@@ -36,6 +36,7 @@ DEFAULTS = {
     "state_file": "state.json",
     "admin_pin": "",
     "guest_max_seconds": 300,
+    "ddp_port": 0,
 }
 
 
@@ -95,6 +96,10 @@ def build_parser():
 
     bm = sub.add_parser("benchmark", help="measure how fast frames can be sent")
     bm.add_argument("--frames", type=int, default=120)
+
+    dd = sub.add_parser("ddp-test", help="send a test rainbow over DDP to a running server (needs ddp_port)")
+    dd.add_argument("--target", default="127.0.0.1", help="destination IP (default 127.0.0.1)")
+    dd.add_argument("--seconds", type=float, default=10)
 
     dt = sub.add_parser("dmx-test", help="send a test rainbow as sACN or Art-Net (try the DMX input without other software)")
     dt.add_argument("--protocol", choices=["sacn", "artnet"], default="sacn")
@@ -226,6 +231,11 @@ def run(args, s):
         return setup(args, s)
     if args.cmd == "dmx-test":
         return dmx_test(args, s)
+    if args.cmd == "ddp-test":
+        port = s["ddp_port"] or ddp.PORT
+        print(f"Sending a {s['width']}x{s['height']} DDP rainbow to {args.target}:{port} for {args.seconds:g}s.")
+        ddp.send_test(s["width"], s["height"], args.target, port, args.seconds)
+        return 0
 
     level = round(255 * max(0, min(100, s["brightness"])) / 100)
     if args.simulate:
@@ -252,6 +262,10 @@ def serve(args, s, d):
     base = Path(args.config).resolve().parent
     player = engine.Player(d, base / s["media_dir"], base / s["state_file"])
     player.start()
+    if s["ddp_port"]:
+        player.ddp = ddp.DdpInput(d.width, d.height, player.paint_frame, player.end_paint,
+                                  s["host"], s["ddp_port"]).start()
+        print(f"DDP input on UDP {s['host']}:{s['ddp_port']}")
     server = web.Server(player, s["host"], s["port"], access.Access(s["admin_pin"], s["guest_max_seconds"]))
     url = f"http://localhost:{server.server_address[1]}/"
     print(f"Control panel: {url}  (Ctrl-C to stop)")
@@ -260,6 +274,8 @@ def serve(args, s, d):
     try:
         server.serve_forever()
     finally:
+        if player.ddp:
+            player.ddp.stop()
         player.close()
         server.server_close()
     return 0

@@ -20,7 +20,7 @@ finds the network interface the panels are on. Then check `ledpanels.toml`: the 
 - Control panel: http://localhost:8080 on this computer (always admin). `ledpanels app` does the same and opens
   the browser.
 - Command line: `ledpanels image|video|text|clock|fill|pixel|clear|test ...` (`ledpanels --help`). Also
-  `discover`, `benchmark`, `dmx-test` (sends a test rainbow over sACN or Art-Net) and `setup`.
+  `discover`, `benchmark`, `dmx-test` (sends a test rainbow over sACN or Art-Net), `ddp-test` and `setup`.
 - Python: see `examples/api_demo.py`. Only one program should send to the panels at a time.
 - `ledpanels --simulate serve` runs everything without hardware.
 - Optional: `ledpanels install-service` (start the server at login) and `ledpanels install-launcher`
@@ -48,6 +48,7 @@ Code layout:
 | `engine.py` | runs one job at a time (image, video, text, game, DMX...), playlist, schedule, saved state |
 | `web.py`, `access.py`, `static/index.html` | HTTP server, admin and guest roles with rate limits, the single-page UI |
 | `dmx.py` | sACN and Art-Net input |
+| `ddp.py` | DDP input for external apps |
 | `games/` | the games, plus `pad.py` (player slots and controller state) and `base.py` (shared helpers) |
 | `media.py`, `fonts.py`, `patterns.py`, `animations.py` | content helpers |
 | `tests/` | pytest suite, which uses the simulated display |
@@ -69,6 +70,7 @@ Code layout:
 | `media_dir`, `state_file` | where uploads and saved settings live |
 | `admin_pin` | enables remote admin login (or set `LEDPANELS_PIN`) |
 | `guest_max_seconds` | longest a guest's item runs before the panels blank |
+| `ddp_port` | UDP port for DDP frame input from external apps, default 0 (off); 4048 is the standard port |
 
 ### Display geometry
 
@@ -189,6 +191,23 @@ In the DMX tab, set a virtual pixel grid that your lighting software maps onto (
 the same numbers. Linear layout is 170 RGB pixels per universe, continuing into the next. The display blanks
 after `timeout` seconds without data. Ports: UDP 5568 (sACN, multicast 239.255.x.x or unicast) and UDP 6454
 (Art-Net); open them in the firewall if needed. sACN priority is honored between sources.
+
+## External apps (DDP)
+
+Other programs (games, the theremin at https://github.com/juan-ms2lab/theremin, xLights, WLED tools) can push frames
+with DDP (Distributed Display Protocol) over UDP. It is off by default; enable it with `ddp_port = 4048` in
+`ledpanels.toml` and restart `serve`. It listens on the same address as the web server (`host`), so with
+`host = "127.0.0.1"` only programs on this computer can send. DDP has no authentication: anything that can
+reach the port can take over the panels, regardless of guest settings.
+
+- Packets: 10-byte header (flags `0x40`, `| 0x01` PUSH on the last packet of a frame; sequence; data type, read
+  as RGB; destination id `1`; data offset in bytes and data length, both big-endian), then up to 1440 bytes of
+  RGB data, row-major over the whole canvas (`offset = (y * width + x) * 3`). The sender must use the canvas
+  size from `ledpanels.toml`; the driver does no scaling.
+- On PUSH the assembled frame is shown at once (the same live path as drawing, so it replaces whatever is
+  playing). After 2 seconds without data the panels blank. `/api/status` reports `ddp` (port, live, packet and
+  frame counts, last source).
+- `ledpanels ddp-test [--target IP]` sends a test rainbow to a running server.
 
 ## HTTP API
 
