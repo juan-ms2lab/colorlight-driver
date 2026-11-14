@@ -238,7 +238,7 @@ def test_game_over_http_as_admin(tmp_path):
     api = lambda m, p, b=None: call("127.0.0.1", port, m, p, None if b is None else json.dumps(b), h)
     try:
         status, body = api("GET", "/api/games")[:2]
-        assert status == 200 and {g["id"] for g in json.loads(body)} == {"platformer", "pong"}
+        assert status == 200 and {g["id"] for g in json.loads(body)} == set(REGISTRY)
         assert api("POST", "/api/game/join", {})[0] == 400  # nothing running yet
         assert api("POST", "/api/play", {"kind": "game", "name": "platformer"})[0] == 200
         assert wait_for(lambda: json.loads(api("GET", "/api/status")[1])["game"])

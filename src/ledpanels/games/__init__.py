@@ -3,6 +3,8 @@
 import time
 
 from ..timing import pause, running
+from .chomp import Chomp
+from .flap import Flap
 from .pad import PAD
 from .platformer import Platformer
 from .pong import Pong
@@ -10,7 +12,7 @@ from .pong import Pong
 STEP = 1 / 60
 IDLE_SECONDS = 120  # a game with no button presses for this long ends and the panels blank
 
-REGISTRY = {g.id: g for g in (Platformer, Pong)}
+REGISTRY = {g.id: g for g in (Platformer, Flap, Chomp, Pong)}
 
 
 def catalog() -> list[dict]:

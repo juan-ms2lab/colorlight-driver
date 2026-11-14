@@ -41,6 +41,16 @@ game with no button presses for 2 minutes ends and blanks the panels.
 - **Panel Run**: an original one-screen platformer (96x16 tiles of 8 pixels, the whole level always visible).
   Up to 4 players race to the flag. Run, jump, stomp the walkers, hit coin boxes. Needs the 768x128 display.
 - **Pong**: 2 players; the computer plays any empty side.
+- **Panel Flap**: up to 4 birds share one course of pipes. Tap A to flap. When a bird reaches the right edge play
+  pauses and the whole screen scrolls over, so the course crosses every panel and keeps getting harder. The last
+  bird flying wins.
+- **Panel Chomp**: a random maze across the whole display (a new one each round), up to 4 players, one life each.
+  Eat the dots, avoid the wisps, grab a corner power pellet to chase them for a few seconds. If the maze is
+  cleared the game ends on a podium (1st, 2nd, 3rd by score, survivors ahead of anyone who was caught); if every
+  player is caught, the last one standing wins.
+
+Multiplayer games wait in a lobby with a countdown after the first player joins; anyone joining mid-round
+plays the next one.
 
 To add a game, create a class in `src/ledpanels/games/` with `id`, `title`, `description`, `max_players`,
 `controls`, `update(dt, pads)` and `render(canvas)`, then list it in `REGISTRY` in `games/__init__.py`.
