@@ -205,3 +205,8 @@ Jobs for `/api/play`: `{"kind": "image|video", "name": "file", "fit": "contain|c
 - Fonts: drop `.ttf` or `.otf` files into a `fonts/` folder next to `ledpanels.toml`; system fonts are listed too.
 - `ledpanels benchmark` measures send speed; `ledpanels setup` finds the interface.
 - Tests: `uv run pytest`.
+
+## License
+
+GNU General Public License v3.0, see `LICENSE`. The bundled trivia questions are from Open Trivia DB under
+CC BY-SA 4.0 (see the Games section).
