@@ -10,10 +10,10 @@ from pathlib import Path
 
 import numpy as np
 
-from . import animations, dmx, fonts, media, patterns
+from . import animations, dmx, fonts, games, media, patterns
 from .timing import hold, pause
 
-KINDS = {"image", "video", "pattern", "text", "clock", "fill", "paint", "playlist", "camera", "dmx"}
+KINDS = {"image", "video", "pattern", "text", "clock", "fill", "paint", "playlist", "camera", "dmx", "game"}
 FITS = {"contain", "cover", "stretch"}
 DEFAULT_ITEM_SECONDS = 10
 _HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -66,6 +66,11 @@ def validate(item, media_dir, in_playlist: bool = False):
             raise ValueError("fmt must be a short strftime format")
     elif kind == "paint" and in_playlist:
         raise ValueError("paint cannot be part of a playlist")
+    elif kind == "game":
+        if item.get("name") not in games.REGISTRY:
+            raise ValueError(f"game must be one of {sorted(games.REGISTRY)}")
+        if in_playlist:
+            raise ValueError("games cannot be part of a playlist")
     elif kind == "dmx":
         dmx.validate_config(item.get("config", {}))
     elif kind == "camera":
@@ -109,6 +114,8 @@ def run_item(display, item, media_dir, stop, in_playlist: bool = False):
                          item.get("font"), item.get("size"))
     elif kind == "dmx":
         dmx.run(display, item.get("config", {}), stop, deadline)
+    elif kind == "game":
+        games.run(display, item["name"], stop, deadline)
     elif kind == "camera":
         media.play_camera(display, item.get("device", 0), fit if "fit" in item else "cover",
                           item.get("mirror", True), stop=stop, deadline=deadline)
@@ -266,6 +273,7 @@ class Player:
                 "autoplay": self.autoplay,
                 "dmx_config": self.dmx_cfg,
                 "dmx": dmx.status(),
+                "game": games.status(),
                 "width": self.display.width,
                 "height": self.display.height,
             }

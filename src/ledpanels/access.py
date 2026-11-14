@@ -11,7 +11,7 @@ LOCKOUT_SECONDS = 60
 MAX_FAILURES = 5
 
 # Job kinds a guest may start; sources like the camera or DMX stay admin-only.
-GUEST_KINDS = {"image", "video", "text", "clock", "pattern", "fill"}
+GUEST_KINDS = {"image", "video", "text", "clock", "pattern", "fill", "game"}
 GUEST_TEXT_MAX = 60
 
 

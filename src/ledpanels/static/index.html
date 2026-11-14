@@ -44,6 +44,15 @@
   body[data-role=none] #app { display:none; } body[data-role=none] #closed { display:block; }
   body[data-role=guest] .admin-only { display:none !important; }
   #qr { width:200px; height:200px; background:#fff; border-radius:8px; padding:6px; }
+  #padUi { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:12px 0; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:none; }
+  #dpad { display:grid; grid-template-columns:repeat(3, 1fr); grid-template-rows:repeat(3, 1fr); gap:6px; width:min(46vw, 260px); height:min(46vw, 260px); }
+  #dpad .up { grid-column:2; grid-row:1; } #dpad .left { grid-column:1; grid-row:2; }
+  #dpad .right { grid-column:3; grid-row:2; } #dpad .down { grid-column:2; grid-row:3; }
+  .pb { font-size:26px; border-radius:14px; background:#2f3540; touch-action:none; user-select:none; -webkit-user-select:none; padding:0; }
+  .pb.on { background:var(--acc); color:#04121f; }
+  #abtns { display:flex; gap:16px; align-items:center; }
+  #abtns .pb { width:min(24vw, 120px); height:min(24vw, 120px); border-radius:50%; font-size:30px; }
+  .swatch { display:inline-block; width:14px; height:14px; border-radius:50%; vertical-align:middle; margin-right:6px; }
   @media (max-width: 640px) {
     main { padding:10px; } button, select, input { padding:10px 12px; font-size:16px; } .num { width:90px; }
     nav button { padding:12px 14px; }
@@ -131,6 +140,27 @@
         <label><input type="checkbox" id="camMirror" checked> mirror</label>
         <button class="primary" id="playCam">Send to panels: camera</button>
       </div>
+    </div>
+  </section>
+
+  <section id="tab-games">
+    <p id="gameBanner" class="note"></p>
+    <div class="grid" id="gameList"></div>
+    <div id="pad" style="display:none">
+      <div class="row"><b id="padTitle"></b><span id="padInfo" class="note"></span><button id="padLeave">Leave game</button></div>
+      <div id="padUi">
+        <div id="dpad">
+          <button class="pb up" data-key="4">&#9650;</button>
+          <button class="pb left" data-key="1">&#9664;</button>
+          <button class="pb right" data-key="2">&#9654;</button>
+          <button class="pb down" data-key="8">&#9660;</button>
+        </div>
+        <div id="abtns">
+          <button class="pb" data-key="32">B</button>
+          <button class="pb" data-key="16">A</button>
+        </div>
+      </div>
+      <p class="note" id="padHelp"></p>
     </div>
   </section>
 
@@ -257,14 +287,15 @@ const play = (job) => post('/api/play', job).then(() => { toast('Sent to the pan
 
 // ---- role and tabs
 let me = { role: null };
-const TABS = { admin: ['library', 'draw', 'effects', 'playlist', 'dmx', 'guests', 'settings'], guest: ['library', 'draw', 'effects'] };
-let currentTab = location.hash.slice(1) || 'library';
+const TABS = { admin: ['library', 'draw', 'effects', 'games', 'playlist', 'dmx', 'guests', 'settings'], guest: ['games', 'library', 'draw', 'effects'] };
+let currentTab = location.hash.slice(1);
 function showTab(t) {
   currentTab = t;
   for (const s of $$('section')) s.classList.toggle('on', s.id === 'tab-' + t);
   for (const b of $('#tabs').children) b.classList.toggle('on', b.dataset.tab === t);
   location.hash = t;
   if (t === 'guests') loadGuest();
+  if (t === 'games') loadGames();
 }
 function applyRole(m) {
   const changed = !me || me.role !== m.role;
@@ -305,6 +336,7 @@ async function refresh() {
     else if (s.job) st.textContent = 'Playing: ' + s.job.kind + (s.job.name ? ' ' + s.job.name : '') + (s.fps ? '  (' + s.fps + ' fps)' : '');
     else st.textContent = 'Idle (panels blank)';
     if (me.role === 'admin') { if (!settingsLoaded) { applySettings(s); settingsLoaded = true; } showDmxStatus(s); }
+    updateGames(s.game);
   } catch (e) { $('#status').textContent = e.message; }
 }
 function applySettings(s) {
@@ -514,6 +546,64 @@ $('#calReset').onclick = () => { $('#gamma').value = 1; $('#gammaVal').textConte
 $('#schSave').onclick = () => post('/api/schedule', { enabled: $('#schEnabled').checked, on: $('#schOn').value, off: $('#schOff').value })
   .then(() => toast('Schedule saved', true)).catch(fail);
 $('#autoplay').onchange = (e) => post('/api/autoplay', { enabled: e.target.checked }).catch(fail);
+
+// ---- games
+const HERO_COLORS = ['#00c8ff', '#ff8c00', '#78ff3c', '#ff3cc8'];
+let gameCatalog = [], pad = { token: null, slot: null, keys: 0, timer: null, title: '' };
+async function loadGames() {
+  try { gameCatalog = await api('/api/games'); } catch (e) { return fail(e); }
+  const box = $('#gameList'); box.replaceChildren();
+  for (const g of gameCatalog) {
+    box.append(el('div', { className: 'card' },
+      el('h3', { textContent: g.title, style: 'margin:4px 0' }),
+      el('div', { className: 'note', textContent: g.description }),
+      el('div', { className: 'note', textContent: 'Players: up to ' + g.max_players + '. Controls: ' + g.controls }),
+      el('div', { className: 'row' }, el('button', { className: 'primary', textContent: 'Play', onclick: () => startGame(g) }))));
+  }
+}
+async function startGame(g) {
+  try { await post('/api/play', { kind: 'game', name: g.id }); await joinGame(); } catch (e) { fail(e); }
+}
+async function joinGame() {
+  try {
+    const r = await post('/api/game/join', {});
+    pad.token = r.token; pad.slot = r.slot; pad.keys = 0;
+    pad.title = r.game ? r.game.title : '';
+    clearInterval(pad.timer); pad.timer = setInterval(sendKeys, 300);
+    showPad();
+  } catch (e) { fail(e); }
+}
+function showPad() {
+  const g = gameCatalog.find((x) => x.title === pad.title);
+  $('#padTitle').replaceChildren(el('span', { className: 'swatch', style: 'background:' + HERO_COLORS[pad.slot % 4] }), 'Player ' + (pad.slot + 1) + ': ' + pad.title);
+  $('#padHelp').textContent = g ? g.controls : '';
+  $('#pad').style.display = ''; $('#gameList').style.display = 'none';
+}
+function padLost(msg) {
+  clearInterval(pad.timer); pad.token = null; pad.keys = 0;
+  for (const b of $$('.pb')) b.classList.remove('on');
+  $('#pad').style.display = 'none'; $('#gameList').style.display = '';
+  if (msg) toast(msg);
+}
+function sendKeys() {
+  if (!pad.token) return;
+  post('/api/game/input', { token: pad.token, keys: pad.keys }).catch((e) => { if (e.status === 400) padLost('You were removed from the game. Join again.'); });
+}
+for (const b of $$('.pb')) {
+  const bit = +b.dataset.key;
+  b.onpointerdown = (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); pad.keys |= bit; b.classList.add('on'); sendKeys(); };
+  const up = () => { pad.keys &= ~bit; b.classList.remove('on'); sendKeys(); };
+  b.onpointerup = up; b.onpointercancel = up; b.oncontextmenu = (e) => e.preventDefault();
+}
+$('#padLeave').onclick = () => { const t = pad.token; padLost(); if (t) post('/api/game/leave', { token: t }).catch(() => {}); };
+function updateGames(g) {
+  const banner = $('#gameBanner');
+  if (pad.token && !g) padLost('The game ended.');
+  if (!g) { banner.textContent = ''; return; }
+  if (pad.token) { banner.textContent = ''; $('#padInfo').textContent = ' ' + g.joined + ' of ' + g.max_players + ' players'; return; }
+  banner.replaceChildren('Now playing: ' + g.title + ' (' + g.joined + ' of ' + g.max_players + ' players). ',
+    g.joined < g.max_players ? el('button', { className: 'primary', textContent: 'Join this game', onclick: joinGame }) : 'It is full.');
+}
 
 loadFonts();
 whoami();
