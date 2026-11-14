@@ -90,3 +90,4 @@ def test_other_job_is_not_stopped_by_timeout(live):
     assert wait_for(lambda: not inp.live)
     time.sleep(0.1)
     assert player.status()["job"]["kind"] == "fill"
+

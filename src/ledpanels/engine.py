@@ -145,7 +145,7 @@ def in_window(on: str, off: str, now: datetime) -> bool:
 
 
 class Player:
-    def __init__(self, display, media_dir, state_path=None):
+    def __init__(self, display, media_dir, state_path=None, brightness: int = 100):
         self.display = display
         self.media_dir = Path(media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
@@ -154,7 +154,7 @@ class Player:
         self.schedule = {"enabled": False, "on": "08:00", "off": "22:00"}
         self.playlist = {"items": [], "loop": True}
         self.dmx_cfg = dict(dmx.DEFAULT_CONFIG)
-        self.brightness = 100
+        self.brightness = brightness  # from the config; a level saved from the UI (state file) wins
         self.gamma = 1.0
         self.balance = [100, 100, 100]
         self.autoplay = False

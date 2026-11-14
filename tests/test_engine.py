@@ -110,3 +110,12 @@ def test_state_persists(tmp_path):
 def test_bad_schedule_time(player):
     with pytest.raises(ValueError):
         player.set_schedule(True, "25:00", "10:00")
+
+
+def test_config_brightness_used_until_saved(tmp_path):
+    from ledpanels import engine
+    from ledpanels.sim import SimDisplay
+    p = engine.Player(SimDisplay(16, 8), tmp_path / "media", tmp_path / "state.json", brightness=31)
+    assert p.brightness == 31
+    p.set_brightness(50)
+    assert engine.Player(SimDisplay(16, 8), tmp_path / "media", tmp_path / "state.json", 31).brightness == 50

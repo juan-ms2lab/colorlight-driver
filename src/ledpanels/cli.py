@@ -261,7 +261,7 @@ def run(args, s):
 def serve(args, s, d):
     base = Path(args.config).resolve().parent
     patterns.WEB_PORT = s["port"]
-    player = engine.Player(d, base / s["media_dir"], base / s["state_file"])
+    player = engine.Player(d, base / s["media_dir"], base / s["state_file"], s["brightness"])
     player.start()
     if s["ddp_port"]:
         player.ddp = ddp.DdpInput(d.width, d.height, player.paint_frame, player.end_paint,
