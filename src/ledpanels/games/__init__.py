@@ -13,11 +13,12 @@ from .pong import Pong
 from .sketch import Sketch
 from .sweep import Sweep
 from .trivia import Trivia
+from .tug import Tug
 
 STEP = 1 / 60
 IDLE_SECONDS = 120  # a game with no button presses for this long ends and the panels blank
 
-REGISTRY = {g.id: g for g in (Platformer, Hop, Flap, Chomp, Bombers, Sweep, Trivia, Sketch, Pong)}
+REGISTRY = {g.id: g for g in (Platformer, Hop, Flap, Chomp, Bombers, Sweep, Trivia, Sketch, Tug, Pong)}
 _current = None
 
 

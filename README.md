@@ -69,6 +69,11 @@ to join (if they leave, the next in line). Anyone joining mid-round plays the ne
   phone while everyone else types guesses. Every player draws once per cycle (host picks 1 to 3 cycles with the
   arrows). Faster correct guesses score more, the drawer earns a bonus, and letters are revealed as time runs out.
   The right end of the display holds the timer, hint and leaderboard. Guessers never receive the word.
+- **Panel Tug of War**: 2 to 8 players are split into two teams (random, balanced) and tap a big button on their
+  phones to drag a flag along a rope. A team's pull is its taps divided by its size, so uneven teams are fair.
+  Drag the flag to the far line to win a round at once, otherwise the side holding the flag when the timer ends
+  wins (a dead heat goes to overtime). The host picks best of 1, 3 or 5 (LEFT/RIGHT) and 10 to 30 seconds a round
+  (UP/DOWN). Taps are sent as messages and capped at 12 per second per player.
 
 Trivia questions come from Open Trivia DB (https://opentdb.com, CC BY-SA 4.0), downloaded once into
 `src/ledpanels/data/trivia.json` so the game works offline. Refresh or enlarge it with

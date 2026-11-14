@@ -72,6 +72,12 @@
   #guessLog { list-style:none; padding:0; margin:6px 0; }
   #guessLog li { padding:4px 8px; border-radius:6px; margin:3px 0; background:#2a2f3a; }
   #guessLog li.close { background:#6b5a10; } #guessLog li.correct { background:#1f6b3a; }
+  #tugInfo { text-align:center; margin:6px 0; font-size:20px; min-height:56px; }
+  #tugInfo b { font-size:28px; }
+  #tugBtn { width:100%; height:min(46vh, 320px); border-radius:20px; border:0; font-size:48px; color:#fff; background:#445; touch-action:manipulation; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  #tugBtn.live:active { filter:brightness(1.5); transform:scale(0.98); }
+  #tugArrows { display:flex; gap:8px; justify-content:center; align-items:center; margin:8px 0; }
+  #tugArrows .pb { width:56px; height:44px; font-size:18px; }
   #padStart { width:min(60vw, 260px); height:56px; font-size:20px; border-radius:28px; margin:6px 0; }
   #padHint { color:var(--fg); }
   @media (max-width: 640px) {
@@ -211,6 +217,15 @@
           <div id="guessRow"><input id="guessIn" maxlength="40" autocomplete="off" autocapitalize="off" placeholder="Type your guess"><button class="primary" id="guessGo">Guess</button></div>
           <ul id="guessLog"></ul>
         </div>
+      </div>
+      <div id="tugUi" style="display:none">
+        <div id="tugInfo"></div>
+        <div id="tugArrows" style="display:none">
+          <button class="pb" data-key="1">&#9664;</button><span class="note">rounds</span><button class="pb" data-key="2">&#9654;</button>
+          <span style="width:16px"></span>
+          <button class="pb" data-key="8">&#9660;</button><span class="note">seconds</span><button class="pb" data-key="4">&#9650;</button>
+        </div>
+        <button id="tugBtn">TAP</button>
       </div>
       <div class="row" style="justify-content:center"><button class="pb" id="padStart" data-key="64">START</button></div>
       <p id="padHint"></p>
@@ -632,12 +647,15 @@ function showPad() {
   const g = gameCatalog.find((x) => x.title === pad.title);
   $('#padTitle').replaceChildren(el('span', { className: 'swatch', style: 'background:' + HERO_COLORS[pad.slot % 8] }), 'Player ' + (pad.slot + 1) + ': ' + pad.title);
   $('#padHelp').textContent = g ? g.controls : '';
-  const quiz = g && g.layout === 'quiz', sketch = g && g.layout === 'sketch';
-  $('#padUi').style.display = quiz || sketch ? 'none' : '';
+  const quiz = g && g.layout === 'quiz', sketch = g && g.layout === 'sketch', tug = g && g.layout === 'tug';
+  pad.layout = g ? g.layout : 'dpad';
+  $('#padUi').style.display = quiz || sketch || tug ? 'none' : '';
   $('#quizUi').style.display = quiz ? '' : 'none';
   $('#sketchUi').style.display = sketch ? '' : 'none';
-  clearInterval(sk.poll); sk.turn = null;
-  if (sketch) { sk.poll = setInterval(pollSketch, 500); pollSketch(); }
+  $('#tugUi').style.display = tug ? '' : 'none';
+  clearInterval(sk.poll); clearInterval(tg.send); sk.turn = null;
+  if (sketch || tug) { sk.poll = setInterval(pollSketch, tug ? 300 : 500); pollSketch(); }
+  if (tug) tg.send = setInterval(sendTaps, 80);
   $('#pad').style.display = ''; $('#gameList').style.display = 'none';
 }
 
@@ -701,7 +719,7 @@ drawCv.onpointerup = endStroke; drawCv.onpointercancel = endStroke;
 async function pollSketch() {
   if (!pad.token || sk.busy) return;
   sk.busy = true;
-  try { renderSketch(await post('/api/game/state', { token: pad.token })); }
+  try { const s = await post('/api/game/state', { token: pad.token }); (pad.layout === 'tug' ? renderTug : renderSketch)(s); }
   catch (e) { if (e.status === 400) padLost('You were removed from the game. Join again.'); }
   finally { sk.busy = false; }
 }
@@ -736,7 +754,42 @@ function sendGuess() {
 }
 $('#guessGo').onclick = sendGuess;
 $('#guessIn').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); sendGuess(); } };
+
+// ---- tug of war
+const TUG_TEAMS = [['RED', '#e03c3c'], ['BLUE', '#3c78e8']];
+const tg = { send: null, count: 0, live: false };
+function sendTaps() {
+  if (!pad.token || !tg.count) return;
+  const n = Math.min(tg.count, 8); tg.count -= n;
+  post('/api/game/message', { token: pad.token, data: { t: 'tap', n } }).catch(() => {});
+}
+$('#tugBtn').onpointerdown = (e) => {
+  e.preventDefault();
+  if (!tg.live) return;
+  tg.count = Math.min(tg.count + 1, 40);
+  if (navigator.vibrate) navigator.vibrate(8);
+};
+$('#tugBtn').oncontextmenu = (e) => e.preventDefault();
+function renderTug(s) {
+  const team = s.team, name = team == null ? null : TUG_TEAMS[team][0];
+  tg.live = s.state === 'pull' && team != null;
+  if (!tg.live) tg.count = 0;
+  $('#tugArrows').style.display = s.state === 'lobby' && s.host === pad.slot ? '' : 'none';
+  const btn = $('#tugBtn'); btn.classList.toggle('live', tg.live);
+  btn.style.background = tg.live ? TUG_TEAMS[team][1] : '#445';
+  const info = $('#tugInfo'); info.replaceChildren();
+  const line = (t) => info.append(el('div', { textContent: t }));
+  let label = 'WAIT';
+  if (s.state === 'lobby') { line('Best of ' + s.best_of + ', ' + s.secs + ' seconds a round.'); line('Teams are picked when the host starts.'); }
+  else if (team == null) { line('A game is in progress.'); line('You can play the next one.'); }
+  else if (s.state === 'ready') { line('You are on team ' + name); info.append(el('b', { textContent: 'Get ready: ' + s.countdown })); }
+  else if (s.state === 'pull') { label = 'TAP!'; line(name + ' team   ' + s.remaining + 's' + (s.overtime ? '  OVERTIME' : '')); line('Your taps: ' + s.taps); }
+  else if (s.state === 'round_end') { line(TUG_TEAMS[s.winner][0] + ' wins the round'); line(s.winner === team ? 'Nice pulling!' : 'Next round, harder!'); }
+  else if (s.state === 'over') { line(TUG_TEAMS[s.winner][0] + ' wins the match'); line('Your total taps: ' + s.total); }
+  btn.textContent = label;
+}
 function padLost(msg) {
+  clearInterval(tg.send); tg.count = 0; tg.live = false;
   clearInterval(sk.poll); clearInterval(pad.timer); pad.token = null; pad.keys = 0;
   for (const b of $$('.pb')) b.classList.remove('on');
   $('#pad').style.display = 'none'; $('#gameList').style.display = '';
