@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LED Panels</title>
+<style>
+  :root { --bg:#14161a; --panel:#1e2127; --line:#2c3038; --fg:#e6e8eb; --dim:#8b929c; --acc:#4da3ff; --bad:#ff5d5d; --ok:#2e9e5b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, sans-serif; }
+  header { display:flex; gap:12px; align-items:center; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0; }
+  h3 { margin:18px 0 6px; }
+  #status { color:var(--dim); flex:1; min-width:180px; }
+  #status.err { color:var(--bad); }
+  main { padding:16px; max-width:1100px; margin:0 auto; }
+  #preview { width:100%; min-height:40px; image-rendering:pixelated; background:#000; border:1px solid var(--line); display:block; }
+  nav { display:flex; gap:4px; margin:14px 0 0; border-bottom:1px solid var(--line); overflow-x:auto; }
+  nav button { background:none; border:0; color:var(--dim); padding:10px 14px; cursor:pointer; font-size:14px; border-bottom:2px solid transparent; white-space:nowrap; }
+  nav button.on { color:var(--fg); border-color:var(--acc); }
+  section { display:none; padding:16px 0; }
+  section.on { display:block; }
+  button, select, input { font:inherit; color:var(--fg); background:#2a2e36; border:1px solid var(--line); border-radius:6px; padding:6px 10px; }
+  button { cursor:pointer; } button:hover { border-color:var(--acc); }
+  button.primary { background:var(--acc); color:#04121f; border-color:var(--acc); }
+  button.danger { color:var(--bad); }
+  input[type=color] { padding:0; width:44px; height:34px; }
+  input[type=range] { padding:0; }
+  input[type=checkbox] { width:auto; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:8px 0; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px; }
+  .card img { width:100%; image-rendering:pixelated; background:#000; display:block; border-radius:4px; }
+  .card .name { margin:6px 0; word-break:break-all; }
+  .drop { border:2px dashed var(--line); border-radius:8px; padding:18px; text-align:center; color:var(--dim); }
+  .drop.over { border-color:var(--acc); color:var(--fg); }
+  #paint { width:100%; image-rendering:pixelated; background:#000; border:1px solid var(--line); touch-action:none; cursor:crosshair; display:block; }
+  table { width:100%; border-collapse:collapse; } td { padding:4px 6px; border-bottom:1px solid var(--line); }
+  #toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); color:#fff; padding:8px 14px; border-radius:6px; display:none; max-width:90vw; z-index:5; }
+  label { color:var(--dim); }
+  .note { color:var(--dim); margin:4px 0; }
+  .num { width:84px; }
+  #closed { display:none; max-width:420px; margin:60px auto; text-align:center; }
+  body[data-role=none] #app { display:none; } body[data-role=none] #closed { display:block; }
+  body[data-role=guest] .admin-only { display:none !important; }
+  #qr { width:200px; height:200px; background:#fff; border-radius:8px; padding:6px; }
+  @media (max-width: 640px) {
+    main { padding:10px; } button, select, input { padding:10px 12px; font-size:16px; } .num { width:90px; }
+    nav button { padding:12px 14px; }
+  }
+</style>
+</head>
+<body data-role="">
+<div id="closed">
+  <h2>LED Panels</h2>
+  <p id="closedMsg">The panels are not open for guests right now.</p>
+  <div class="row" id="loginBox" style="justify-content:center">
+    <input id="pin" type="password" placeholder="Admin PIN" autocomplete="current-password">
+    <button id="login" class="primary">Admin login</button>
+  </div>
+</div>
+
+<div id="app">
+<header>
+  <h1>LED Panels</h1>
+  <div id="status">connecting...</div>
+  <button id="stop" class="danger admin-only">Stop and clear</button>
+  <button id="logout" style="display:none">Log out</button>
+</header>
+<main>
+  <img id="preview" alt="Current frame sent to the panels">
+  <nav id="tabs"></nav>
+
+  <section id="tab-library">
+    <div class="row">
+      <label>Fit</label>
+      <select id="fit"><option>contain</option><option>cover</option><option>stretch</option></select>
+      <label><input type="checkbox" id="loopVideo" checked> loop videos</label>
+    </div>
+    <div class="drop admin-only" id="drop">Drop images, GIFs or videos here, or <input type="file" id="file" multiple></div>
+    <div class="grid" id="media" style="margin-top:12px"></div>
+  </section>
+
+  <section id="tab-draw">
+    <div class="row">
+      <select id="tool"><option value="pen">Pen</option><option value="eraser">Eraser</option>
+        <option value="text">Text</option><option value="fill">Fill all</option></select>
+      <input type="color" id="drawColor" value="#ff3030">
+      <label>Size</label><input type="range" id="size" min="1" max="24" value="3">
+      <input id="drawText" placeholder="text to place" size="14">
+      <button id="clearCanvas">Clear canvas</button>
+    </div>
+    <canvas id="paint"></canvas>
+    <p class="note">Drawing is sent to the panels live.</p>
+  </section>
+
+  <section id="tab-effects">
+    <div class="row">
+      <label>Run for (seconds, blank = until replaced)</label>
+      <input id="effDur" type="number" min="1" max="86400" class="num">
+    </div>
+    <h3>Scrolling text</h3>
+    <div class="row">
+      <input id="txt" placeholder="Hello" size="28" maxlength="200">
+      <input type="color" id="txtColor" value="#ffffff">
+      <label>Speed</label><input type="range" id="txtSpeed" min="20" max="400" value="100">
+    </div>
+    <div class="row">
+      <label>Font</label><select id="txtFont"></select>
+      <label>Letter height</label><input id="txtSize" type="number" min="4" max="400" placeholder="auto" class="num">
+      <button class="primary" id="playText">Send to panels: scroll text</button>
+    </div>
+    <h3>Clock</h3>
+    <div class="row">
+      <select id="clockFmt"><option value="%H:%M:%S">24h with seconds</option><option value="%H:%M">24h</option>
+        <option value="%I:%M %p">12h</option></select>
+      <input type="color" id="clockColor" value="#ffffff">
+      <button class="primary" id="playClock">Send to panels: clock</button>
+    </div>
+    <h3>Solid color</h3>
+    <div class="row">
+      <input type="color" id="fillColor" value="#ff0000">
+      <button class="primary" id="playFill">Send to panels: solid color</button>
+    </div>
+    <h3>Patterns (click one to send it)</h3>
+    <div class="row" id="patterns"></div>
+    <div class="admin-only">
+      <h3>Camera</h3>
+      <div class="row">
+        <label>Device</label><input id="camDev" type="number" min="0" max="9" value="0" class="num">
+        <label><input type="checkbox" id="camMirror" checked> mirror</label>
+        <button class="primary" id="playCam">Send to panels: camera</button>
+      </div>
+      <h3>Screen mirror (X11 sessions only)</h3>
+      <div class="row">
+        <label>Monitor</label><input id="scrMon" type="number" min="0" max="8" value="1" class="num">
+        <button class="primary" id="playScreen">Send to panels: screen</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-playlist" class="admin-only">
+    <div class="row">
+      <select id="plKind"></select>
+      <input id="plText" placeholder="text (for text items)" size="22">
+      <label>Seconds</label><input id="plDur" type="number" min="1" max="86400" value="10" class="num">
+      <button id="plAdd">Add</button>
+    </div>
+    <table id="plTable"></table>
+    <div class="row">
+      <label><input type="checkbox" id="plLoop" checked> loop</label>
+      <button id="plSave">Save</button>
+      <button class="primary" id="plPlay">Save and play</button>
+    </div>
+  </section>
+
+  <section id="tab-dmx" class="admin-only">
+    <p class="note">Receive sACN (E1.31) and Art-Net lighting data and show it on the panels. Lighting software maps its
+      pixels onto a small virtual grid below, which is scaled up to the full display.</p>
+    <div class="row">
+      <label><input type="checkbox" id="dmxSacn" checked> sACN</label>
+      <label><input type="checkbox" id="dmxArt" checked> Art-Net</label>
+      <label>Grid</label><input id="dmxW" type="number" min="1" max="512" class="num"> x <input id="dmxH" type="number" min="1" max="512" class="num">
+      <label>First universe</label><input id="dmxStart" type="number" min="0" max="63990" class="num">
+    </div>
+    <div class="row">
+      <label>Layout</label>
+      <select id="dmxLayout"><option value="linear">Linear (170 pixels per universe, continuing)</option>
+        <option value="per_row">One universe per row</option></select>
+      <label>Color order</label>
+      <select id="dmxOrder"><option>RGB</option><option>RBG</option><option>GRB</option><option>GBR</option><option>BRG</option><option>BGR</option></select>
+      <label><input type="checkbox" id="dmxSerp"> serpentine rows</label>
+      <label>Scale</label><select id="dmxScale"><option value="stretch">Stretch</option><option value="contain">Keep shape</option></select>
+    </div>
+    <div class="row">
+      <label>Blank after</label><input id="dmxTimeout" type="number" min="0" max="3600" class="num"><label>seconds without data (0 = hold)</label>
+      <label>Listen on IP</label><input id="dmxIface" size="14">
+    </div>
+    <p class="note" id="dmxHint"></p>
+    <div class="row">
+      <button id="dmxSave">Save settings</button>
+      <label>Run for (minutes, blank = until stopped)</label><input id="dmxMin" type="number" min="1" max="1440" class="num">
+      <button class="primary" id="dmxGo">Start listening</button>
+    </div>
+    <p class="note" id="dmxStatus"></p>
+    <p class="note">Send multicast sACN (the default in most software), or unicast to this computer. Art-Net can be
+      unicast or broadcast. The listening ports are UDP 5568 (sACN) and 6454 (Art-Net); a firewall may need to allow them.</p>
+  </section>
+
+  <section id="tab-guests" class="admin-only">
+    <p class="note">Let people on the same network control the panels from their phones. Guests can draw, send text,
+      and play patterns and library items. They cannot upload, delete, change settings, or use the camera.</p>
+    <p id="guestState"></p>
+    <div class="row">
+      <button class="primary" data-open="30">Open for 30 min</button>
+      <button class="primary" data-open="60">1 hour</button>
+      <button class="primary" data-open="120">2 hours</button>
+      <button class="primary" data-open="240">4 hours</button>
+      <button data-open="">Until I close it</button>
+      <button class="danger" id="guestClose">Close guest access</button>
+    </div>
+    <div class="row"><label><input type="checkbox" id="guestLock"> Pause guest control (keep the page open, ignore their input)</label></div>
+    <div class="row" style="align-items:flex-start">
+      <img id="qr" alt="QR code for the guest page">
+      <div><p>Guests open this address:</p><p><b id="guestUrl"></b></p><p class="note">They must be on the same Wi-Fi or network as this computer.</p></div>
+    </div>
+  </section>
+
+  <section id="tab-settings" class="admin-only">
+    <div class="row"><label>Brightness</label>
+      <input type="range" id="bright" min="0" max="100"><span id="brightVal"></span></div>
+    <h3>Color calibration</h3>
+    <p class="note">Gamma 2.2 makes mid-tones look natural on LEDs. Balance trims any color that looks too strong.</p>
+    <div class="row"><label>Gamma</label><input type="range" id="gamma" min="0.5" max="3" step="0.1" value="1"><span id="gammaVal"></span>
+      <button id="calReset">Reset</button></div>
+    <div class="row"><label>Red</label><input type="range" id="balR" min="0" max="100" value="100">
+      <label>Green</label><input type="range" id="balG" min="0" max="100" value="100">
+      <label>Blue</label><input type="range" id="balB" min="0" max="100" value="100"></div>
+    <h3>Schedule</h3>
+    <div class="row">
+      <label><input type="checkbox" id="schEnabled"> only run between</label>
+      <input type="time" id="schOn"> <label>and</label> <input type="time" id="schOff">
+      <button id="schSave">Save</button>
+    </div>
+    <h3>Startup</h3>
+    <div class="row"><label><input type="checkbox" id="autoplay"> resume the last played item when the app starts</label></div>
+  </section>
+</main>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+function el(tag, props = {}, ...kids) {
+  const e = Object.assign(document.createElement(tag), props);
+  for (const k of kids) e.append(k);
+  return e;
+}
+let toastTimer;
+function toast(msg, ok = false) {
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  t.style.background = ok ? 'var(--ok)' : 'var(--bad)';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.style.display = 'none'), 3000);
+}
+async function api(path, opts = {}) {
+  let r;
+  try {
+    r = await fetch(path, { ...opts, headers: { 'X-Requested-With': 'ledpanels', ...(opts.headers || {}) } });
+  } catch (e) {
+    throw new Error('Cannot reach the control panel server. Check that it is running and that this page was opened from its address.');
+  }
+  const isJson = (r.headers.get('content-type') || '').includes('json');
+  const body = isJson ? await r.json() : null;
+  if (!r.ok) { const err = new Error((body && body.error) || r.statusText); err.status = r.status; throw err; }
+  return body;
+}
+const post = (p, b) => api(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+const fail = (e) => toast(e.message);
+const play = (job) => post('/api/play', job).then(() => { toast('Sent to the panels', true); return refresh(); }).catch(fail);
+
+// ---- role and tabs
+let me = { role: null };
+const TABS = { admin: ['library', 'draw', 'effects', 'playlist', 'dmx', 'guests', 'settings'], guest: ['library', 'draw', 'effects'] };
+let currentTab = location.hash.slice(1) || 'library';
+function showTab(t) {
+  currentTab = t;
+  for (const s of $$('section')) s.classList.toggle('on', s.id === 'tab-' + t);
+  for (const b of $('#tabs').children) b.classList.toggle('on', b.dataset.tab === t);
+  location.hash = t;
+  if (t === 'guests') loadGuest();
+}
+function applyRole(m) {
+  const changed = !me || me.role !== m.role;
+  me = m;
+  document.body.dataset.role = m.role || 'none';
+  $('#logout').style.display = m.role === 'admin' && m.via === 'login' ? '' : 'none';
+  $('#loginBox').style.display = m.pin_login ? '' : 'none';
+  $('#closedMsg').textContent = m.pin_login ? 'The panels are not open for guests right now. Admins can log in below.'
+    : 'The panels are not open for guests right now.';
+  if (!changed) return;
+  const tabs = TABS[m.role] || [];
+  $('#tabs').replaceChildren(...tabs.map((t) => {
+    const b = el('button', { textContent: t[0].toUpperCase() + t.slice(1) });
+    b.dataset.tab = t; b.onclick = () => showTab(t); return b;
+  }));
+  if (tabs.length) showTab(tabs.includes(currentTab) ? currentTab : tabs[0]);
+  $('#txt').maxLength = m.role === 'admin' ? 200 : 60;
+  if (m.role) { loadMedia().catch(fail); loadPatterns(); loadFonts(); refresh(); }
+  if (m.role === 'admin') settingsLoaded = false;
+}
+async function whoami() { try { applyRole(await api('/api/whoami')); } catch (e) { $('#status').textContent = 'Server unreachable'; } }
+$('#login').onclick = () => post('/api/login', { pin: $('#pin').value }).then(() => { $('#pin').value = ''; return whoami(); }).catch(fail);
+$('#pin').onkeydown = (e) => { if (e.key === 'Enter') $('#login').click(); };
+$('#logout').onclick = () => post('/api/logout', {}).then(whoami).catch(fail);
+
+// ---- status and preview
+let W = 768, H = 128, settingsLoaded = false;
+async function refresh() {
+  if (!me.role) return;
+  try {
+    const s = await api('/api/status');
+    W = s.width; H = s.height;
+    initCanvas();
+    const st = $('#status');
+    st.classList.toggle('err', !!s.error);
+    if (s.error) st.textContent = 'Error: ' + s.error;
+    else if (s.asleep) st.textContent = 'Scheduled off';
+    else if (s.job) st.textContent = 'Playing: ' + s.job.kind + (s.job.name ? ' ' + s.job.name : '') + (s.fps ? '  (' + s.fps + ' fps)' : '');
+    else st.textContent = 'Idle (panels blank)';
+    if (me.role === 'admin') { if (!settingsLoaded) { applySettings(s); settingsLoaded = true; } showDmxStatus(s); }
+  } catch (e) { $('#status').textContent = e.message; }
+}
+function applySettings(s) {
+  $('#bright').value = s.brightness; $('#brightVal').textContent = s.brightness + '%';
+  $('#gamma').value = s.gamma; $('#gammaVal').textContent = s.gamma;
+  [$('#balR').value, $('#balG').value, $('#balB').value] = s.balance;
+  $('#schEnabled').checked = s.schedule.enabled; $('#schOn').value = s.schedule.on; $('#schOff').value = s.schedule.off;
+  $('#autoplay').checked = s.autoplay;
+  playlist = s.playlist.items; $('#plLoop').checked = s.playlist.loop; renderPlaylist();
+  dmxFill(s.dmx_config);
+}
+const updatePreview = () => { if (me.role && !document.hidden) $('#preview').src = '/api/preview.png?t=' + Date.now(); };
+setInterval(refresh, 1500);
+setInterval(whoami, 4000);
+setInterval(updatePreview, 400);
+$('#stop').onclick = () => api('/api/stop', { method: 'POST' }).then(refresh).catch(fail);
+
+// ---- library
+async function loadMedia() {
+  const list = await api('/api/media');
+  const box = $('#media'); box.replaceChildren();
+  for (const m of list) {
+    const img = el('img', { src: '/api/media/' + encodeURIComponent(m.name) + '/thumb', alt: m.name, loading: 'lazy' });
+    const job = () => ({ kind: m.kind, name: m.name, fit: $('#fit').value, loop: $('#loopVideo').checked });
+    const bPlay = el('button', { textContent: 'Play', className: 'primary', onclick: () => play(job()) });
+    const bAdd = el('button', { textContent: '+ Playlist', className: 'admin-only', onclick: () => { playlist.push({ kind: m.kind, name: m.name, fit: $('#fit').value }); renderPlaylist(); toast('Added to playlist (not saved yet)', true); } });
+    const bDel = el('button', { textContent: 'Delete', className: 'danger admin-only', onclick: async () => {
+      if (!confirm('Delete ' + m.name + '?')) return;
+      try { await api('/api/media/' + encodeURIComponent(m.name), { method: 'DELETE' }); loadMedia(); } catch (e) { fail(e); } } });
+    box.append(el('div', { className: 'card' }, img, el('div', { className: 'name', textContent: m.name + ' (' + m.kind + ')' }),
+      el('div', { className: 'row' }, bPlay, bAdd, bDel)));
+  }
+}
+async function upload(files) {
+  for (const f of files) {
+    try { await api('/api/media/' + encodeURIComponent(f.name), { method: 'PUT', body: f }); }
+    catch (e) { toast(f.name + ': ' + e.message); }
+  }
+  loadMedia();
+}
+$('#file').onchange = (e) => upload(e.target.files);
+const drop = $('#drop');
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); upload(e.dataTransfer.files); };
+
+// ---- draw
+const cv = $('#paint'), ctx = cv.getContext('2d', { willReadFrequently: true });
+let drawing = false, last = null, dirty = false, inflight = false, canvasReady = false;
+function initCanvas() {
+  if (canvasReady && cv.width === W && cv.height === H) return;
+  cv.width = W; cv.height = H; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); canvasReady = true;
+}
+function pos(e) {
+  const r = cv.getBoundingClientRect();
+  return [Math.floor((e.clientX - r.left) * W / r.width), Math.floor((e.clientY - r.top) * H / r.height)];
+}
+function dot(x, y, size) { const h = Math.floor(size / 2); ctx.fillRect(x - h, y - h, size, size); }
+function line(a, b, size) {
+  let [x0, y0] = a; const [x1, y1] = b;
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    dot(x0, y0, size);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+async function pump() {
+  if (inflight || !dirty) return;
+  inflight = true; dirty = false;
+  try { await api('/api/frame', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: ctx.getImageData(0, 0, W, H).data }); }
+  catch (e) {
+    if (e.status === 429) { dirty = true; await new Promise((r) => setTimeout(r, 300)); } else toast(e.message);
+  }
+  inflight = false; if (dirty) setTimeout(pump, 70);
+}
+const markDirty = () => { dirty = true; pump(); };
+cv.onpointerdown = (e) => {
+  initCanvas();
+  const tool = $('#tool').value, size = +$('#size').value, p = pos(e);
+  const color = $('#drawColor').value;
+  if (tool === 'fill') { ctx.fillStyle = color; ctx.fillRect(0, 0, W, H); markDirty(); return; }
+  if (tool === 'text') {
+    ctx.fillStyle = color; ctx.textBaseline = 'middle'; ctx.font = (size * 4 + 8) + 'px sans-serif';
+    ctx.fillText($('#drawText').value, p[0], p[1]); markDirty(); return;
+  }
+  drawing = true; cv.setPointerCapture(e.pointerId);
+  ctx.fillStyle = tool === 'eraser' ? '#000' : color; last = p; dot(p[0], p[1], size); markDirty();
+};
+cv.onpointermove = (e) => { if (!drawing) return; const p = pos(e); line(last, p, +$('#size').value); last = p; markDirty(); };
+cv.onpointerup = () => { drawing = false; };
+$('#clearCanvas').onclick = () => { initCanvas(); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); markDirty(); };
+
+// ---- effects
+const withDuration = (job) => { const d = +$('#effDur').value; return d > 0 ? { ...job, duration: d } : job; };
+$('#playText').onclick = () => {
+  const size = +$('#txtSize').value;
+  play(withDuration({ kind: 'text', text: $('#txt').value || 'Hello', color: hex($('#txtColor').value), speed: +$('#txtSpeed').value,
+    font: $('#txtFont').value, ...(size > 0 ? { size } : {}) }));
+};
+$('#playClock').onclick = () => play(withDuration({ kind: 'clock', fmt: $('#clockFmt').value, color: hex($('#clockColor').value), font: $('#txtFont').value }));
+$('#playFill').onclick = () => play(withDuration({ kind: 'fill', color: hex($('#fillColor').value) }));
+$('#playCam').onclick = () => play(withDuration({ kind: 'camera', device: +$('#camDev').value, mirror: $('#camMirror').checked, fit: $('#fit').value === 'contain' ? 'cover' : $('#fit').value }));
+$('#playScreen').onclick = () => play(withDuration({ kind: 'screen', monitor: +$('#scrMon').value, fit: $('#fit').value }));
+function loadPatterns() {
+  api('/api/patterns').then((names) => {
+    $('#patterns').replaceChildren(); $('#plKind').replaceChildren();
+    for (const n of names) {
+      $('#patterns').append(el('button', { textContent: n, onclick: () => play(withDuration({ kind: 'pattern', name: n })) }));
+      $('#plKind').append(el('option', { value: 'pattern:' + n, textContent: 'pattern: ' + n }));
+    }
+    for (const k of ['clock', 'text']) $('#plKind').prepend(el('option', { value: k, textContent: k }));
+  }).catch(() => {});
+}
+function loadFonts() {
+  api('/api/fonts').then((names) => { $('#txtFont').replaceChildren(...names.map((n) => el('option', { value: n, textContent: n.replace(/\.(ttf|otf)$/i, '') }))); $('#txtFont').value = 'hershey-duplex'; }).catch(() => {});
+}
+
+// ---- playlist
+let playlist = [];
+function describe(it) { return it.kind + (it.name ? ': ' + it.name : '') + (it.kind === 'text' ? ': ' + it.text : ''); }
+function renderPlaylist() {
+  const t = $('#plTable'); t.replaceChildren();
+  playlist.forEach((it, i) => {
+    const dur = el('input', { type: 'number', min: 1, max: 86400, className: 'num', placeholder: it.kind === 'video' ? 'full' : '10',
+      value: it.duration || '', onchange: (e) => { it.duration = e.target.value ? +e.target.value : undefined; } });
+    const move = (d) => { const j = i + d; if (j < 0 || j >= playlist.length) return; [playlist[i], playlist[j]] = [playlist[j], playlist[i]]; renderPlaylist(); };
+    t.append(el('tr', {}, el('td', { textContent: i + 1 }), el('td', { textContent: describe(it) }), el('td', {}, dur, ' s'),
+      el('td', {}, el('button', { textContent: 'Up', onclick: () => move(-1) }), ' ', el('button', { textContent: 'Down', onclick: () => move(1) }), ' ',
+        el('button', { textContent: 'Remove', className: 'danger', onclick: () => { playlist.splice(i, 1); renderPlaylist(); } }))));
+  });
+}
+$('#plAdd').onclick = () => {
+  const v = $('#plKind').value, duration = +$('#plDur').value || 10;
+  if (v === 'text') playlist.push({ kind: 'text', text: $('#plText').value || 'Hello', duration });
+  else if (v === 'clock') playlist.push({ kind: 'clock', duration });
+  else playlist.push({ kind: 'pattern', name: v.split(':')[1], duration });
+  renderPlaylist();
+};
+async function savePlaylist() { await post('/api/playlist', { items: playlist, loop: $('#plLoop').checked }); }
+$('#plSave').onclick = () => savePlaylist().then(() => toast('Saved', true)).catch(fail);
+$('#plPlay').onclick = async () => {
+  try { await savePlaylist(); await play({ kind: 'playlist', items: playlist, loop: $('#plLoop').checked }); } catch (e) { fail(e); }
+};
+
+// ---- DMX
+function dmxCfg() {
+  const protocols = [$('#dmxSacn').checked && 'sacn', $('#dmxArt').checked && 'artnet'].filter(Boolean);
+  return { protocols, width: +$('#dmxW').value, height: +$('#dmxH').value, start_universe: +$('#dmxStart').value,
+    layout: $('#dmxLayout').value, order: $('#dmxOrder').value, serpentine: $('#dmxSerp').checked, scale: $('#dmxScale').value,
+    timeout: +$('#dmxTimeout').value, interface_ip: $('#dmxIface').value };
+}
+function dmxFill(c) {
+  $('#dmxSacn').checked = c.protocols.includes('sacn'); $('#dmxArt').checked = c.protocols.includes('artnet');
+  $('#dmxW').value = c.width; $('#dmxH').value = c.height; $('#dmxStart').value = c.start_universe;
+  $('#dmxLayout').value = c.layout; $('#dmxOrder').value = c.order; $('#dmxSerp').checked = c.serpentine;
+  $('#dmxScale').value = c.scale; $('#dmxTimeout').value = c.timeout; $('#dmxIface').value = c.interface_ip;
+  dmxHint();
+}
+function dmxHint() {
+  const c = dmxCfg();
+  const n = c.layout === 'per_row' ? c.height : Math.ceil(c.width * c.height * 3 / 510);
+  $('#dmxHint').textContent = c.width + 'x' + c.height + ' = ' + (c.width * c.height) + ' pixels, needs ' + n + ' universe' + (n === 1 ? '' : 's')
+    + ' (' + c.start_universe + ' to ' + (c.start_universe + n - 1) + ').';
+}
+for (const id of ['dmxW', 'dmxH', 'dmxStart', 'dmxLayout']) $('#' + id).oninput = dmxHint;
+function showDmxStatus(s) {
+  const d = s.dmx, n = $('#dmxStatus');
+  if (!d) { n.textContent = 'Not listening.'; return; }
+  const src = d.sources.map((x) => x.name + ' (' + x.source.split(':').join(' ') + ')').join(', ');
+  n.textContent = (d.waiting ? 'Listening, no data yet. ' : 'Receiving. ') + d.packets + ' packets. ' + (src ? 'Sources: ' + src + '. ' : '') + (d.warning || '');
+}
+$('#dmxSave').onclick = () => post('/api/dmx', dmxCfg()).then(() => toast('DMX settings saved', true)).catch(fail);
+$('#dmxGo').onclick = async () => {
+  try {
+    await post('/api/dmx', dmxCfg());
+    const m = +$('#dmxMin').value;
+    await play({ kind: 'dmx', ...(m > 0 ? { duration: m * 60 } : {}) });
+  } catch (e) { fail(e); }
+};
+
+// ---- guests
+async function loadGuest() {
+  try {
+    const g = await api('/api/guest');
+    $('#guestState').textContent = g.open ? 'Guest access is OPEN' + (g.remaining !== null ? ' for another ' + Math.ceil(g.remaining / 60) + ' minutes.' : ' until you close it.') : 'Guest access is closed.';
+    $('#guestLock').checked = g.locked;
+    $('#guestUrl').textContent = g.urls[0] || '(no network address found)';
+    $('#qr').style.display = g.urls[0] ? '' : 'none';
+    if (g.urls[0]) $('#qr').src = '/api/guest/qr.svg?t=' + Date.now();
+  } catch (e) { fail(e); }
+}
+for (const b of $$('[data-open]')) b.onclick = () => post('/api/guest', { action: 'open', minutes: b.dataset.open ? +b.dataset.open : null }).then(loadGuest).catch(fail);
+$('#guestClose').onclick = () => post('/api/guest', { action: 'close' }).then(loadGuest).catch(fail);
+$('#guestLock').onchange = (e) => post('/api/guest', { locked: e.target.checked }).then(loadGuest).catch(fail);
+setInterval(() => { if (me.role === 'admin' && currentTab === 'guests') loadGuest(); }, 5000);
+
+// ---- settings
+$('#bright').oninput = (e) => { $('#brightVal').textContent = e.target.value + '%'; };
+$('#bright').onchange = (e) => post('/api/brightness', { percent: +e.target.value }).then(() => toast('Brightness set', true)).catch(fail);
+const calibrate = () => post('/api/calibration', { gamma: +$('#gamma').value, balance: [+$('#balR').value, +$('#balG').value, +$('#balB').value] }).catch(fail);
+$('#gamma').oninput = (e) => { $('#gammaVal').textContent = e.target.value; };
+for (const id of ['gamma', 'balR', 'balG', 'balB']) $('#' + id).onchange = calibrate;
+$('#calReset').onclick = () => { $('#gamma').value = 1; $('#gammaVal').textContent = 1; for (const id of ['balR', 'balG', 'balB']) $('#' + id).value = 100; calibrate(); };
+$('#schSave').onclick = () => post('/api/schedule', { enabled: $('#schEnabled').checked, on: $('#schOn').value, off: $('#schOff').value })
+  .then(() => toast('Schedule saved', true)).catch(fail);
+$('#autoplay').onchange = (e) => post('/api/autoplay', { enabled: e.target.checked }).catch(fail);
+
+loadFonts();
+whoami();
+</script>
+</body>
+</html>

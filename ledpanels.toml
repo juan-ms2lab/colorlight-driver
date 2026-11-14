@@ -1,0 +1,21 @@
+# Canvas size must match what the receiver cards are configured for.
+# Run `ledpanels discover` to see each card's cabinet size, then adjust.
+interface = "eno2"
+width = 768
+height = 128
+brightness = 100      # percent
+firmware = 0          # 0 = auto-detect via discovery
+color_order = "BGR"
+flip_x = false
+flip_y = false
+
+# Web control panel (serve / app).
+# 0.0.0.0 lets phones on the network reach the guest page, but only while you open guest
+# access in the Guests tab. This computer (http://localhost:8080) is always admin.
+# Remote admin login needs a PIN: set admin_pin here or export LEDPANELS_PIN.
+host = "0.0.0.0"
+port = 8080
+media_dir = "media"
+state_file = "state.json"
+# admin_pin = ""
+guest_max_seconds = 300   # longest a guest's item runs before the panels blank

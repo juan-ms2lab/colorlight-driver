@@ -1,0 +1,5 @@
+media/
+state.json
+.venv/
+__pycache__/
+*.egg-info/
