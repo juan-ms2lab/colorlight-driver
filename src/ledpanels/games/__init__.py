@@ -6,16 +6,18 @@ from ..timing import pause, running
 from .bomber import Bombers
 from .chomp import Chomp
 from .flap import Flap
+from .hop import Hop
 from .pad import PAD
 from .platformer import Platformer
 from .pong import Pong
+from .sketch import Sketch
 from .sweep import Sweep
 from .trivia import Trivia
 
 STEP = 1 / 60
 IDLE_SECONDS = 120  # a game with no button presses for this long ends and the panels blank
 
-REGISTRY = {g.id: g for g in (Platformer, Flap, Chomp, Bombers, Sweep, Trivia, Pong)}
+REGISTRY = {g.id: g for g in (Platformer, Hop, Flap, Chomp, Bombers, Sweep, Trivia, Sketch, Pong)}
 _current = None
 
 
@@ -34,6 +36,17 @@ def status():
     return s
 
 
+def private_state(token: str) -> dict:
+    """Public game info plus whatever only this player may see (the word to draw, their own feedback)."""
+    slot = PAD.slot_of(token)
+    out = dict(status() or {})
+    out["slot"] = slot
+    game = _current
+    if game is not None and hasattr(game, "private_info"):
+        out.update(game.private_info(slot))
+    return out
+
+
 def run(display, name: str, stop=None, deadline=None):
     global _current
     game = REGISTRY[name](display.width, display.height)
@@ -45,6 +58,9 @@ def run(display, name: str, stop=None, deadline=None):
             now = time.monotonic()
             acc = min(acc + now - last, 0.25)
             last = now
+            if hasattr(game, "on_message"):
+                for slot, data in PAD.drain():
+                    game.on_message(slot, data)
             while acc >= STEP:
                 game.update(STEP, PAD.snapshot())
                 acc -= STEP

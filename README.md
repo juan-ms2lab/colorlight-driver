@@ -61,6 +61,14 @@ to join (if they leave, the next in line). Anyone joining mid-round plays the ne
 - **Panel Trivia**: up to 8 players answer on their phones (four colored buttons). Faster correct answers score
   more (500 to 1000). The host picks the deck (mixed, nerd, engineering, movies and TV, sci-fi, fantasy) and the
   number of questions with the arrows, then presses START. Ends on a podium.
+- **Panel Hop**: Frogger across the whole display, up to 8 players. Cross a chain of biomes (meadow, river, forest,
+  swamp, desert, snow, volcano, then a huge multilane city highway) to the finish pond. Difficulty escalates toward
+  the end, there are checkpoints and 3 lives, and cars flash a warning before entering the screen. The test suite
+  includes a bot that proves every stretch is crossable (`LED_SLOW_TESTS=1` runs extra seeds).
+- **Panel Sketch**: Pictionary for up to 8 players. The server picks the drawer, who draws a secret word on their
+  phone while everyone else types guesses. Every player draws once per cycle (host picks 1 to 3 cycles with the
+  arrows). Faster correct guesses score more, the drawer earns a bonus, and letters are revealed as time runs out.
+  The right end of the display holds the timer, hint and leaderboard. Guessers never receive the word.
 
 Trivia questions come from Open Trivia DB (https://opentdb.com, CC BY-SA 4.0), downloaded once into
 `src/ledpanels/data/trivia.json` so the game works offline. Refresh or enlarge it with
@@ -95,6 +103,7 @@ guest window or an admin cookie from `POST /api/login {"pin": "..."}`.
 | POST `/api/play` | start a job (see below) | guest (limited kinds), admin |
 | POST `/api/frame` | raw RGB or RGBA bytes, one full frame (live drawing) | guest, admin |
 | GET `/api/games`; POST `/api/game/join`, `/api/game/input` `{token, keys}`, `/api/game/leave` | game catalog and controller | guest, admin |
+| POST `/api/game/message` `{token, data}`, `/api/game/state` `{token}` | game-specific messages (drawing, guesses) and per-player state | guest, admin |
 | POST `/api/stop` | stop and blank | admin |
 | PUT/DELETE `/api/media/<name>` | upload / delete a file | admin |
 | POST `/api/brightness` `{percent}`, `/api/calibration` `{gamma, balance:[r,g,b]}` | output tuning | admin |

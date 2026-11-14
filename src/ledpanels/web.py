@@ -176,7 +176,8 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/api/games":
             self._json(games.catalog())
             return True
-        if method == "POST" and path in ("/api/game/join", "/api/game/input", "/api/game/leave"):
+        if method == "POST" and path in ("/api/game/join", "/api/game/input", "/api/game/leave",
+                                         "/api/game/message", "/api/game/state"):
             if role == "guest" and ac.locked:
                 raise PermissionError("guest control is paused by the host")
             if not ac.limiter.allow((ip, "game"), 60, 90):
@@ -190,6 +191,14 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/game/input":
                 PAD.set_keys(token, body.get("keys"))
                 self._json({"ok": True})
+            elif path == "/api/game/message":
+                data = body.get("data")
+                if len(json.dumps(data)) > 40000:
+                    raise ValueError("message too large")
+                PAD.put_message(token, data)
+                self._json({"ok": True})
+            elif path == "/api/game/state":
+                self._json(games.private_state(token))
             else:
                 PAD.leave(token)
                 self._json({"ok": True})
