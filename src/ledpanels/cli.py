@@ -1,3 +1,5 @@
+"""Command-line entry point: one-shot commands, the web control panel and setup helpers."""
+
 import argparse
 import json
 import os

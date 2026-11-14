@@ -4,6 +4,7 @@ import io
 import json
 import re
 import socket
+import sys
 import threading
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -372,6 +373,11 @@ class Server(ThreadingHTTPServer):
         p = self.server_address[1]
         self.allowed_hosts = {f"localhost:{p}", f"127.0.0.1:{p}", f"[::1]:{p}"}
 
+    def handle_error(self, request, client_address):
+        # A phone that drops off the Wi-Fi mid-request is routine, not worth a traceback.
+        if isinstance(sys.exception(), (ConnectionError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
 
 def serve_in_thread(player, host="127.0.0.1", port=8080, access=None) -> Server:
     server = Server(player, host, port, access)

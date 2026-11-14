@@ -17,10 +17,58 @@ finds the network interface the panels are on. Then check `ledpanels.toml`: the 
 
 ## Using it
 
-- Control panel: http://localhost:8080 on this computer (always admin).
-- Command line: `ledpanels image|video|text|clock|fill|pixel|clear|test ...` (`ledpanels --help`).
+- Control panel: http://localhost:8080 on this computer (always admin). `ledpanels app` does the same and opens
+  the browser.
+- Command line: `ledpanels image|video|text|clock|fill|pixel|clear|test ...` (`ledpanels --help`). Also
+  `discover`, `benchmark`, `dmx-test` (sends a test rainbow over sACN or Art-Net) and `setup`.
 - Python: see `examples/api_demo.py`. Only one program should send to the panels at a time.
 - `ledpanels --simulate serve` runs everything without hardware.
+- Optional: `ledpanels install-service` (start the server at login) and `ledpanels install-launcher`
+  (application-menu entry). Nothing starts automatically unless you run these.
+
+## How it works
+
+The panels are driven by Colorlight 5A-75B receiver cards. The computer sends them raw Ethernet frames (no IP),
+so it must be on the same link and needs `CAP_NET_RAW` (the setup script grants it to the venv's Python).
+
+- The display is one canvas (`width` x `height` in `ledpanels.toml`, 768x128 here) that spans all the cards.
+  Everything (images, games, DMX) draws into that canvas, and the sender splits it into one packet per row
+  segment, up to 497 pixels each.
+- Packet types (`src/ledpanels/protocol.py`): `0x55` pixel rows, `0x0A` brightness, `0x01` sync (latches the
+  frame), `0x07` discover and `0x08` reply. The destination MAC is `11:22:33:44:55:66`.
+- `color_order` (BGR here), `flip_x` and `flip_y` are applied when each frame is sent, along with the gamma and
+  white-balance curve. Brightness is sent to the cards as a packet.
+- Output runs at roughly 250 frames per second on a gigabit link; games and video are paced to their own rate.
+
+Code layout:
+
+| Path | Role |
+|---|---|
+| `sender.py`, `protocol.py`, `sim.py` | raw-socket display, packet builders, hardware-free stand-in |
+| `engine.py` | runs one job at a time (image, video, text, game, DMX...), playlist, schedule, saved state |
+| `web.py`, `access.py`, `static/index.html` | HTTP server, admin and guest roles with rate limits, the single-page UI |
+| `dmx.py` | sACN and Art-Net input |
+| `games/` | the games, plus `pad.py` (player slots and controller state) and `base.py` (shared helpers) |
+| `media.py`, `fonts.py`, `patterns.py`, `animations.py` | content helpers |
+| `tests/` | pytest suite, which uses the simulated display |
+
+## Configuration
+
+`ledpanels.toml` keys (command-line options override them):
+
+| Key | Meaning |
+|---|---|
+| `interface` | network interface the panels are on (`ledpanels setup` finds it) |
+| `width`, `height` | canvas size, must match the receiver cards |
+| `brightness` | percent, 0 to 100 |
+| `firmware` | receiver firmware major version, 0 detects it |
+| `color_order`, `flip_x`, `flip_y` | wiring corrections |
+| `host`, `port` | web server bind address and port (0.0.0.0 lets phones connect) |
+| `media_dir`, `state_file` | where uploads and saved settings live |
+| `admin_pin` | enables remote admin login (or set `LEDPANELS_PIN`) |
+| `guest_max_seconds` | longest a guest's item runs before the panels blank |
+
+Saved settings (calibration, schedule, playlist, DMX, autoplay) are in `state.json`, which is not committed.
 
 ## Guests (phones)
 
@@ -35,8 +83,9 @@ only this computer can administer. There is no HTTPS, so use it only on a networ
 ## Games
 
 The Games tab (also on the guest page) lists the games. Pressing Play starts one and turns the phone into a
-controller (D-pad, A and B). More phones can press "Join this game". Each phone keeps one player slot, and a
-game with no button presses for 2 minutes ends and blanks the panels.
+controller. Most games use a D-pad with A and B; others replace it with something better suited (answer buttons,
+a drawing canvas, a tap button, a touch pad). More phones can press "Join this game". Each phone keeps one
+player slot, and a game with no input for 2 minutes ends and blanks the panels. Guests can play too.
 
 - **Panel Run**: an original one-screen platformer (96x16 tiles of 8 pixels, the whole level always visible).
   Up to 4 players race to the flag. Run, jump, stomp the walkers, hit coin boxes. Needs the 768x128 display.
@@ -74,6 +123,10 @@ to join (if they leave, the next in line). Anyone joining mid-round plays the ne
   Drag the flag to the far line to win a round at once, otherwise the side holding the flag when the timer ends
   wins (a dead heat goes to overtime). The host picks best of 1, 3 or 5 (LEFT/RIGHT) and 10 to 30 seconds a round
   (UP/DOWN). Taps are sent as messages and capped at 12 per second per player.
+- **Panel Hockey**: air hockey across the whole display for up to 4 players. Players 1 and 3 defend the left goal,
+  2 and 4 the right, and the computer plays any side with nobody on it. Each phone shows a touch pad: slide your
+  finger to move your mallet inside your half and hit the puck into the other goal. The host picks first to 3, 5,
+  7 or 10 goals with the arrows. Players can join or leave mid-match.
 
 Trivia questions come from Open Trivia DB (https://opentdb.com, CC BY-SA 4.0), downloaded once into
 `src/ledpanels/data/trivia.json` so the game works offline. Refresh or enlarge it with
@@ -82,10 +135,22 @@ Trivia questions come from Open Trivia DB (https://opentdb.com, CC BY-SA 4.0), d
 To add a game, create a class in `src/ledpanels/games/` with `id`, `title`, `description`, `max_players`,
 `controls`, `update(dt, pads)` and `render(canvas)`, then list it in `REGISTRY` in `games/__init__.py`.
 `pads` has one entry per player slot: `None` if nobody joined, else the held buttons as a bitmask
-(`LEFT 1, RIGHT 2, UP 4, DOWN 8, A 16, B 32, START 64, X 128, Y 256`; see `games/pad.py`). A game may set
-`layout = "quiz"` for the four-answer controller, and define `info()` to share lobby state; see
-`games/base.py` for the shared lobby, tile movement and podium helpers. Rendering is plain numpy at the display's
-native resolution.
+(`LEFT 1, RIGHT 2, UP 4, DOWN 8, A 16, B 32, START 64, X 128, Y 256`; see `games/pad.py`). Rendering is plain numpy
+at the display's native resolution (RGB), and `games/base.py` has the shared host-START `Lobby`, tile movement,
+podium and text helpers.
+
+Optional hooks:
+
+- `info()` returns public state (lobby, scores, timers) that is merged into `/api/status` and `/api/game/state`.
+- `private_info(slot)` returns what only that player may see (the word to draw, their own team).
+- `on_message(slot, data)` receives free-form messages from `POST /api/game/message` (taps, drawing strokes,
+  guesses, touch positions). Validate everything: any phone can send anything.
+- `layout` picks the phone controller: `dpad` (default), `quiz` (four answer buttons), `sketch` (draw and guess),
+  `tug` (tap button) or `air` (touch pad). A new layout needs a pane in `static/index.html`; the page polls
+  `/api/game/state` to draw it.
+
+Games that need messages should handle them in `on_message` and keep per-player rate limits (see `tug.py` and
+`sketch.py`). Tests follow `tests/test_games_multiplayer.py` (`begin`, `pads_for`, `DT`).
 
 ## sACN and Art-Net
 
@@ -103,6 +168,7 @@ guest window or an admin cookie from `POST /api/login {"pin": "..."}`.
 | Method and path | Purpose | Role |
 |---|---|---|
 | GET `/api/whoami` | role (`admin`, `guest`, null), guest window state | all |
+| POST `/api/login` `{pin}`, `/api/logout` | admin session cookie | all |
 | GET `/api/status` | current job, fps, settings | guest, admin |
 | GET `/api/media`, `/api/media/<name>/thumb`, `/api/patterns`, `/api/fonts`, `/api/preview.png` | read-only info | guest, admin |
 | POST `/api/play` | start a job (see below) | guest (limited kinds), admin |
@@ -121,8 +187,20 @@ Jobs for `/api/play`: `{"kind": "image|video", "name": "file", "fit": "contain|c
 `{"kind": "playlist", "items": [...], "loop": true}`, `{"kind": "camera", "device": 0}`,
 `{"kind": "dmx"}`. Any job accepts `"duration"` in seconds.
 
+## Troubleshooting
+
+- "Operation not permitted" when sending: the venv's Python lacks `CAP_NET_RAW`. Re-run `scripts/setup.sh`, or
+  `sudo setcap cap_net_raw+ep $(readlink -f .venv/bin/python)`. Recreating the venv removes the permission.
+- Nothing lights up: check `interface` in `ledpanels.toml`, the cable, and that `ledpanels discover` lists the cards.
+- Wrong colors or mirrored image: adjust `color_order`, `flip_x`, `flip_y`; `ledpanels test` shows an orientation pattern.
+- Phones cannot connect: they must be on the same network, `host` must be `0.0.0.0`, guest access must be open
+  in the Guests tab, and port 8080 (plus UDP 5568 and 6454 for DMX) must be allowed in the firewall.
+- Another program is sending to the panels: only one sender may run at a time.
+
 ## Notes
 
+- Games are verified by the test suite, including a bot that proves Panel Hop is completable.
+  `LED_SLOW_TESTS=1 uv run pytest` runs extra Hop seeds.
 - If the cable is unplugged, output retries automatically and recovers when the link returns.
 - Fonts: drop `.ttf` or `.otf` files into a `fonts/` folder next to `ledpanels.toml`; system fonts are listed too.
 - `ledpanels benchmark` measures send speed; `ledpanels setup` finds the interface.

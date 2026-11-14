@@ -6,6 +6,7 @@ from ..timing import pause, running
 from .bomber import Bombers
 from .chomp import Chomp
 from .flap import Flap
+from .hockey import Hockey
 from .hop import Hop
 from .pad import PAD
 from .platformer import Platformer
@@ -18,7 +19,7 @@ from .tug import Tug
 STEP = 1 / 60
 IDLE_SECONDS = 120  # a game with no button presses for this long ends and the panels blank
 
-REGISTRY = {g.id: g for g in (Platformer, Hop, Flap, Chomp, Bombers, Sweep, Trivia, Sketch, Tug, Pong)}
+REGISTRY = {g.id: g for g in (Platformer, Hop, Flap, Chomp, Bombers, Sweep, Trivia, Sketch, Tug, Hockey, Pong)}
 _current = None
 
 

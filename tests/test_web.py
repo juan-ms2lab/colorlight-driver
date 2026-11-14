@@ -43,6 +43,19 @@ def test_index_served(server):
     assert status == 200 and b"LED Panels" in body
 
 
+def test_dropped_connections_are_quiet_but_real_errors_still_print(server, capsys):
+    try:
+        raise ConnectionResetError("phone left")
+    except ConnectionResetError:
+        server.handle_error(None, ("192.168.1.5", 1234))
+    assert capsys.readouterr().err == ""
+    try:
+        raise ValueError("a real bug")
+    except ValueError:
+        server.handle_error(None, ("192.168.1.5", 1234))
+    assert "a real bug" in capsys.readouterr().err
+
+
 def test_rejects_foreign_host(server):
     status, _ = req(server, "GET", "/api/status", host="evil.example:80")
     assert status == 403

@@ -78,6 +78,11 @@
   #tugBtn.live:active { filter:brightness(1.5); transform:scale(0.98); }
   #tugArrows { display:flex; gap:8px; justify-content:center; align-items:center; margin:8px 0; }
   #tugArrows .pb { width:56px; height:44px; font-size:18px; }
+  #airInfo { text-align:center; margin:6px 0; font-size:20px; min-height:30px; }
+  #airPad { position:relative; width:100%; height:min(44vh, 300px); border-radius:16px; border:3px solid #556; background:#0e1228; touch-action:none; user-select:none; -webkit-user-select:none; }
+  #airDot { position:absolute; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; background:#fff; opacity:0.85; pointer-events:none; left:50%; top:50%; }
+  #airArrows { display:flex; gap:8px; justify-content:center; align-items:center; margin:8px 0; }
+  #airArrows .pb { width:64px; height:44px; font-size:18px; }
   #padStart { width:min(60vw, 260px); height:56px; font-size:20px; border-radius:28px; margin:6px 0; }
   #padHint { color:var(--fg); }
   @media (max-width: 640px) {
@@ -226,6 +231,13 @@
           <button class="pb" data-key="8">&#9660;</button><span class="note">seconds</span><button class="pb" data-key="4">&#9650;</button>
         </div>
         <button id="tugBtn">TAP</button>
+      </div>
+      <div id="airUi" style="display:none">
+        <div id="airInfo"></div>
+        <div id="airArrows" style="display:none">
+          <button class="pb" data-key="8">&#9660;</button><span class="note">goals to win</span><button class="pb" data-key="4">&#9650;</button>
+        </div>
+        <div id="airPad"><div id="airDot"></div></div>
       </div>
       <div class="row" style="justify-content:center"><button class="pb" id="padStart" data-key="64">START</button></div>
       <p id="padHint"></p>
@@ -647,15 +659,17 @@ function showPad() {
   const g = gameCatalog.find((x) => x.title === pad.title);
   $('#padTitle').replaceChildren(el('span', { className: 'swatch', style: 'background:' + HERO_COLORS[pad.slot % 8] }), 'Player ' + (pad.slot + 1) + ': ' + pad.title);
   $('#padHelp').textContent = g ? g.controls : '';
-  const quiz = g && g.layout === 'quiz', sketch = g && g.layout === 'sketch', tug = g && g.layout === 'tug';
+  const quiz = g && g.layout === 'quiz', sketch = g && g.layout === 'sketch', tug = g && g.layout === 'tug', air = g && g.layout === 'air';
   pad.layout = g ? g.layout : 'dpad';
-  $('#padUi').style.display = quiz || sketch || tug ? 'none' : '';
+  $('#padUi').style.display = quiz || sketch || tug || air ? 'none' : '';
   $('#quizUi').style.display = quiz ? '' : 'none';
   $('#sketchUi').style.display = sketch ? '' : 'none';
   $('#tugUi').style.display = tug ? '' : 'none';
-  clearInterval(sk.poll); clearInterval(tg.send); sk.turn = null;
-  if (sketch || tug) { sk.poll = setInterval(pollSketch, tug ? 300 : 500); pollSketch(); }
+  $('#airUi').style.display = air ? '' : 'none';
+  clearInterval(sk.poll); clearInterval(tg.send); clearInterval(ag.send); sk.turn = null;
+  if (sketch || tug || air) { sk.poll = setInterval(pollSketch, tug ? 300 : 500); pollSketch(); }
   if (tug) tg.send = setInterval(sendTaps, 80);
+  if (air) ag.send = setInterval(sendMove, 33);
   $('#pad').style.display = ''; $('#gameList').style.display = 'none';
 }
 
@@ -719,7 +733,7 @@ drawCv.onpointerup = endStroke; drawCv.onpointercancel = endStroke;
 async function pollSketch() {
   if (!pad.token || sk.busy) return;
   sk.busy = true;
-  try { const s = await post('/api/game/state', { token: pad.token }); (pad.layout === 'tug' ? renderTug : renderSketch)(s); }
+  try { const s = await post('/api/game/state', { token: pad.token }); (({ tug: renderTug, air: renderAir })[pad.layout] || renderSketch)(s); }
   catch (e) { if (e.status === 400) padLost('You were removed from the game. Join again.'); }
   finally { sk.busy = false; }
 }
@@ -788,8 +802,36 @@ function renderTug(s) {
   else if (s.state === 'over') { line(TUG_TEAMS[s.winner][0] + ' wins the match'); line('Your total taps: ' + s.total); }
   btn.textContent = label;
 }
+// ---- air hockey
+const ag = { send: null, u: 0.5, v: 0.5, sent: null, down: false };
+function sendMove() {
+  if (!pad.token || !ag.down) return;
+  const key = ag.u + ',' + ag.v;
+  if (key === ag.sent) return;
+  ag.sent = key;
+  post('/api/game/message', { token: pad.token, data: { t: 'move', x: ag.u, y: ag.v } }).catch(() => {});
+}
+function airMove(e) {
+  const r = $('#airPad').getBoundingClientRect();
+  ag.u = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); ag.v = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+  const dot = $('#airDot'); dot.style.left = (ag.u * 100) + '%'; dot.style.top = (ag.v * 100) + '%';
+}
+$('#airPad').onpointerdown = (e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); ag.down = true; airMove(e); };
+$('#airPad').onpointermove = (e) => { if (ag.down) airMove(e); };
+$('#airPad').onpointerup = $('#airPad').onpointercancel = () => { ag.down = false; };
+$('#airPad').oncontextmenu = (e) => e.preventDefault();
+const AIR_TEAMS = [['LEFT', '#00c8ff'], ['RIGHT', '#ff8c00']];
+function renderAir(s) {
+  const [name, color] = AIR_TEAMS[s.team];
+  $('#airArrows').style.display = s.state === 'lobby' && s.host === pad.slot ? '' : 'none';
+  $('#airDot').style.background = color;
+  $('#airPad').style.borderColor = color;
+  const info = $('#airInfo'); info.replaceChildren();
+  info.append(el('div', { textContent: 'You defend the ' + name + ' goal. Slide your finger on the pad.' }));
+  info.append(el('div', { className: 'note', textContent: s.state === 'lobby' ? 'First to ' + s.to_win + ' goals.' : s.scores[0] + ' - ' + s.scores[1] + (s.state === 'over' ? '  ' + AIR_TEAMS[s.winner][0] + ' wins' : '') }));
+}
 function padLost(msg) {
-  clearInterval(tg.send); tg.count = 0; tg.live = false;
+  clearInterval(ag.send); clearInterval(tg.send); tg.count = 0; tg.live = false;
   clearInterval(sk.poll); clearInterval(pad.timer); pad.token = null; pad.keys = 0;
   for (const b of $$('.pb')) b.classList.remove('on');
   $('#pad').style.display = 'none'; $('#gameList').style.display = '';
