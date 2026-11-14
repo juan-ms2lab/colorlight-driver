@@ -49,13 +49,29 @@ game with no button presses for 2 minutes ends and blanks the panels.
   cleared the game ends on a podium (1st, 2nd, 3rd by score, survivors ahead of anyone who was caught); if every
   player is caught, the last one standing wins.
 
-Multiplayer games wait in a lobby with a countdown after the first player joins; anyone joining mid-round
-plays the next one.
+Multiplayer games wait in a lobby until the **host presses START** on their phone. The host is the first player
+to join (if they leave, the next in line). Anyone joining mid-round plays the next one.
+
+- **Panel Bomber**: Bomberman-style arena across the whole display, up to 4 players. Drop bombs (A), blow up
+  crates for power-ups (bigger blasts, more bombs, speed), last player standing wins. After 75 seconds the arena
+  closes in from the edges so rounds always end.
+- **Panel Sweep**: Minesweeper for up to 6 players on one shared board (48x7 squares). A reveals (or clears around
+  a satisfied number), B flags. Revealing scores points, each mine costs one of two lives and stuns you for 3
+  seconds, correct flags earn +10 and wrong ones cost 10 at the end. Clear the board for a podium.
+- **Panel Trivia**: up to 8 players answer on their phones (four colored buttons). Faster correct answers score
+  more (500 to 1000). The host picks the deck (mixed, nerd, engineering, movies and TV, sci-fi, fantasy) and the
+  number of questions with the arrows, then presses START. Ends on a podium.
+
+Trivia questions come from Open Trivia DB (https://opentdb.com, CC BY-SA 4.0), downloaded once into
+`src/ledpanels/data/trivia.json` so the game works offline. Refresh or enlarge it with
+`python scripts/fetch_trivia.py`; `--retag` re-sorts the saved questions into decks without downloading.
 
 To add a game, create a class in `src/ledpanels/games/` with `id`, `title`, `description`, `max_players`,
 `controls`, `update(dt, pads)` and `render(canvas)`, then list it in `REGISTRY` in `games/__init__.py`.
 `pads` has one entry per player slot: `None` if nobody joined, else the held buttons as a bitmask
-(`LEFT 1, RIGHT 2, UP 4, DOWN 8, A 16, B 32`; see `games/pad.py`). Rendering is plain numpy at the display's
+(`LEFT 1, RIGHT 2, UP 4, DOWN 8, A 16, B 32, START 64, X 128, Y 256`; see `games/pad.py`). A game may set
+`layout = "quiz"` for the four-answer controller, and define `info()` to share lobby state; see
+`games/base.py` for the shared lobby, tile movement and podium helpers. Rendering is plain numpy at the display's
 native resolution.
 
 ## sACN and Art-Net

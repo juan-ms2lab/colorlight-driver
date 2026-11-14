@@ -3,33 +3,42 @@
 import time
 
 from ..timing import pause, running
+from .bomber import Bombers
 from .chomp import Chomp
 from .flap import Flap
 from .pad import PAD
 from .platformer import Platformer
 from .pong import Pong
+from .sweep import Sweep
+from .trivia import Trivia
 
 STEP = 1 / 60
 IDLE_SECONDS = 120  # a game with no button presses for this long ends and the panels blank
 
-REGISTRY = {g.id: g for g in (Platformer, Flap, Chomp, Pong)}
+REGISTRY = {g.id: g for g in (Platformer, Flap, Chomp, Bombers, Sweep, Trivia, Pong)}
+_current = None
 
 
 def catalog() -> list[dict]:
-    return [{"id": g.id, "title": g.title, "description": g.description,
-             "max_players": g.max_players, "controls": g.controls} for g in REGISTRY.values()]
+    return [{"id": g.id, "title": g.title, "description": g.description, "max_players": g.max_players,
+             "controls": g.controls, "layout": getattr(g, "layout", "dpad")} for g in REGISTRY.values()]
 
 
 def status():
     s = PAD.status()
     if s:
         s["title"] = REGISTRY[s["id"]].title
+        game = _current
+        if game is not None and hasattr(game, "info"):
+            s.update(game.info())  # e.g. {"state": "lobby", "host": 0}
     return s
 
 
 def run(display, name: str, stop=None, deadline=None):
+    global _current
     game = REGISTRY[name](display.width, display.height)
     PAD.start(name, game.max_players)
+    _current = game
     try:
         last, acc = time.monotonic(), 0.0
         while running(stop, deadline):
@@ -45,4 +54,5 @@ def run(display, name: str, stop=None, deadline=None):
                 return
             pause(stop, max(0.0, STEP - (time.monotonic() - now)))
     finally:
+        _current = None
         PAD.stop()

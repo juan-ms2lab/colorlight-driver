@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 from . import sprites
-from .base import PLAYER_COLORS, Lobby, center_text, text
+from .base import PLAYER_COLORS, Lobby, Mover, advance, center_text, draw_podium, reverse, text
 from .pad import DOWN, LEFT, RIGHT, UP
 
 T = 8
@@ -62,20 +62,6 @@ def make_maze(rng: random.Random) -> list[list[int]]:
     return g
 
 
-class Mover:
-    def __init__(self, tx, ty):
-        self.tx, self.ty = tx, ty
-        self.dx = self.dy = 0
-        self.p = 0.0
-
-    def pos(self):
-        return self.tx + self.dx * self.p, self.ty + self.dy * self.p
-
-    def tile(self):
-        x, y = self.pos()
-        return int(math.floor(x + 0.5)), int(math.floor(y + 0.5))
-
-
 class Chomper(Mover):
     def __init__(self, slot):
         super().__init__(*STARTS[slot])
@@ -106,13 +92,14 @@ class Chomp:
         self.t = 0.0
         self._wisp_sprites: dict = {}
         self.joined: set[int] = set()
+        self.lobby = Lobby()
         self.new_round()
 
     # ---- setup
 
     def new_round(self, joined=None):
         self.state = "lobby"
-        self.lobby = Lobby(8.0)
+        self.lobby.reset()
         self.joined = set(joined or ())
         self.grid = make_maze(self.rng)
         reserved = set(STARTS) | {HOME}
@@ -156,29 +143,6 @@ class Chomp:
         self.bg[ty * T + 3 : ty * T + 5, tx * T + 3 : tx * T + 5] = 0
 
     # ---- movement
-
-    @staticmethod
-    def _reverse(e: Mover):
-        e.tx, e.ty, e.dx, e.dy, e.p = e.tx + e.dx, e.ty + e.dy, -e.dx, -e.dy, 1.0 - e.p
-
-    def _advance(self, e: Mover, dist: float, choose):
-        for _ in range(12):
-            if dist <= 1e-9:
-                return
-            if (e.dx, e.dy) == (0, 0):
-                e.dx, e.dy = choose(e)
-                if (e.dx, e.dy) == (0, 0):
-                    e.p = 0.0
-                    return
-            remaining = 1.0 - e.p
-            if dist < remaining:
-                e.p += dist
-                return
-            dist -= remaining
-            e.tx, e.ty, e.p = e.tx + e.dx, e.ty + e.dy, 0.0
-            e.dx, e.dy = choose(e)
-            if (e.dx, e.dy) == (0, 0):
-                return
 
     def _chomper_choose(self, c: Chomper):
         if c.want != (0, 0) and self._open(c.tx + c.want[0], c.ty + c.want[1]):
@@ -227,12 +191,15 @@ class Chomp:
 
     # ---- update
 
+    def info(self) -> dict:
+        return {"state": self.state, "host": self.lobby.host}
+
     def update(self, dt: float, pads: list):
         self.t += dt
         joined = {i for i, k in enumerate(pads) if k is not None}
         if self.state == "lobby":
             self.joined = joined
-            if self.lobby.update(dt, joined):
+            if self.lobby.update(joined, pads):
                 self._start(joined)
         elif self.state == "play":
             self._play(dt, pads)
@@ -257,8 +224,8 @@ class Chomp:
             if pressed:
                 c.want = ([d for d in pressed if d != c.want] or pressed)[0]
                 if (c.dx, c.dy) != (0, 0) and c.want == (-c.dx, -c.dy):
-                    self._reverse(c)
-            self._advance(c, PLAYER_SPEED * dt, self._chomper_choose)
+                    reverse(c)
+            advance(c, PLAYER_SPEED * dt, self._chomper_choose)
             tile = c.tile()
             if tile in self.dots:
                 self.dots.discard(tile)
@@ -271,7 +238,7 @@ class Chomp:
                 for w in self.wisps:
                     if w.state in ("chase", "scared"):
                         if w.state == "chase" and (w.dx, w.dy) != (0, 0):
-                            self._reverse(w)
+                            reverse(w)
                         w.state = "scared"
         self.scare = max(0.0, self.scare - dt)
         for w in self.wisps:
@@ -281,7 +248,7 @@ class Chomp:
                 w.state = "chase"
             speed = {"scared": SCARED_SPEED, "eyes": EYES_SPEED}.get(w.state, GHOST_SPEED + 0.15 * w.idx)
             if w.state != "home":
-                self._advance(w, speed * dt, self._wisp_choose)
+                advance(w, speed * dt, self._wisp_choose)
             if w.state == "eyes" and w.tile() == HOME:
                 w.state = "chase"
             self._collide(w)
@@ -342,30 +309,9 @@ class Chomp:
                         (cx + 5 * math.cos(face + open_angle), cy + 5 * math.sin(face + open_angle))], np.int32)
         cv2.fillConvexPoly(canvas, pts, (0, 0, 0))
 
-    def _render_podium(self, canvas):
-        canvas[:] = (10, 8, 30)
-        for i in range(70):
-            x, y = (i * 97 + int(self.t * 10) * (i % 3)) % self.width, int(self.t * 45 + i * 37) % self.height
-            canvas[y : y + 2, x : x + 2] = PLAYER_COLORS[i % 4]
-        center_text(canvas, "PODIUM", 18, 0.7, (255, 230, 0), box=False)
-        ranking = self.result["ranking"]
-        layout = ((0, self.width // 2, 56, (255, 200, 0)), (1, self.width // 2 - 130, 40, (205, 205, 215)),
-                  (2, self.width // 2 + 130, 26, (205, 127, 50)))
-        for place, cx, h, color in layout:
-            if place >= len(ranking):
-                continue
-            slot, score = ranking[place]
-            top = 122 - h
-            canvas[top:122, cx - 50 : cx + 50] = color
-            text(canvas, str(place + 1), cx - 6, top + min(h - 4, 26), 0.9, (30, 30, 30), 2)
-            cv2.circle(canvas, (cx, top - 10), 6, PLAYER_COLORS[slot], -1)
-            label = f"P{slot + 1} {score}"
-            (tw, _), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-            text(canvas, label, cx - tw // 2, top - 22, 0.5, PLAYER_COLORS[slot])
-
     def render(self, canvas: np.ndarray):
         if self.state == "over" and self.result["mode"] == "podium":
-            return self._render_podium(canvas)
+            return draw_podium(canvas, self.result["ranking"], self.t)
         canvas[:] = 0
         canvas[OY : OY + GH * T, OX : OX + GW * T] = self.bg
         if int(self.t * 4) % 2 == 0:
@@ -391,8 +337,7 @@ class Chomp:
         if self.state == "lobby":
             center_text(canvas, "PANEL CHOMP", 50, 1.0, (255, 230, 0))
             center_text(canvas, "Steer with the D-pad. Last chomper standing wins.", 72, 0.5)
-            msg = f"STARTS IN {self.lobby.count}" if self.lobby.count is not None else "JOIN ON YOUR PHONE"
-            center_text(canvas, msg, 96, 0.8, (120, 255, 120))
+            center_text(canvas, self.lobby.message, 96, 0.8, (120, 255, 120) if self.joined else (255, 255, 255))
         elif self.state == "over":
             ranking = self.result["ranking"]
             canvas[:] = canvas // 3

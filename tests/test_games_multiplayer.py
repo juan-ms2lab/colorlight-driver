@@ -2,13 +2,14 @@ import numpy as np
 import pytest
 
 from ledpanels.games import REGISTRY, chomp as ch, flap as fl, pad
+from ledpanels.games.base import Lobby
 
 DT = 1 / 60
 NONE4 = [None, None, None, None]
 
 
 def pads_for(**keys):
-    out = list(NONE4)
+    out = [None] * max(4, 1 + max((int(s[1:]) for s in keys), default=0))
     for slot, k in keys.items():
         out[int(slot[1:])] = k
     return out
@@ -16,6 +17,17 @@ def pads_for(**keys):
 
 def canvas():
     return np.zeros((128, 768, 3), np.uint8)
+
+
+def begin(g, slots, host=None):
+    """Join the given slots, then have the host press START."""
+    host = min(slots) if host is None else host
+    joined = pads_for(**{f"s{s}": 0 for s in slots})
+    for _ in range(3):
+        g.update(DT, joined)
+    g.update(DT, pads_for(**{f"s{s}": (pad.START if s == host else 0) for s in slots}))
+    g.update(DT, joined)
+    return g
 
 
 # ---- Panel Flap
@@ -28,25 +40,37 @@ def flap_bot(g, b):
 
 
 def start_flap(slots=(0,), seed=3):
-    g = fl.Flap(768, 128, seed=seed)
-    pads = pads_for(**{f"s{s}": 0 for s in slots})
-    for _ in range(int(9 / DT)):
-        g.update(DT, pads)
-        if g.state == "play":
-            break
+    g = begin(fl.Flap(768, 128, seed=seed), slots)
+    assert g.state == "play"
     return g
 
 
-def test_flap_lobby_countdown_then_play():
+def test_lobby_waits_for_the_host_to_press_start():
     g = fl.Flap(768, 128, seed=1)
     for _ in range(60):
         g.update(DT, NONE4)
-    assert g.state == "lobby" and g.lobby.count is None  # nobody joined, no countdown
-    g.update(DT, pads_for(s0=0, s1=0))
-    assert g.lobby.count == 8
-    for _ in range(int(8.2 / DT)):
-        g.update(DT, pads_for(s0=0, s1=0))
+    assert g.state == "lobby" and g.lobby.host is None
+    both = pads_for(s0=0, s1=0)
+    for _ in range(int(30 / DT)):  # no countdown: waiting forever is fine
+        g.update(DT, both)
+    assert g.state == "lobby" and g.lobby.host == 0
+    g.update(DT, pads_for(s0=0, s1=pad.START))  # a guest pressing START does nothing
+    g.update(DT, both)
+    assert g.state == "lobby"
+    g.update(DT, pads_for(s0=pad.START, s1=0))
     assert g.state == "play" and set(g.birds) == {0, 1}
+
+
+def test_lobby_host_passes_to_next_player_when_host_leaves():
+    lobby = Lobby()
+    lobby.update({1, 2}, [None, 0, 0])
+    assert lobby.host == 1
+    lobby.update({0, 1, 2}, [0, 0, 0])
+    assert lobby.host == 1  # first to join stays host, even though slot 0 is lower
+    lobby.update({0, 2}, [0, None, 0])
+    assert lobby.host == 2  # next in line is whoever joined next, not the lowest slot number
+    assert lobby.update({0, 2}, [0, None, pad.START]) is True
+    assert lobby.update({0, 2}, [0, None, pad.START]) is False  # held START fires once
 
 
 def test_flap_idle_bird_falls_and_dies():
@@ -112,8 +136,7 @@ def test_flap_renders_every_state():
     c = canvas()
     g.update(DT, pads_for(s0=0))
     g.render(c)
-    for _ in range(int(9 / DT)):
-        g.update(DT, pads_for(s0=0))
+    begin(g, (0,))
     for _ in range(int(40 / DT)):
         b = g.birds.get(0)
         g.update(DT, pads_for(s0=flap_bot(g, b) if b and b.alive else 0))
@@ -137,12 +160,8 @@ def reachable(g):
 
 
 def start_chomp(slots=(0,), seed=5):
-    g = ch.Chomp(768, 128, seed=seed)
-    pads = pads_for(**{f"s{s}": 0 for s in slots})
-    for _ in range(int(9 / DT)):
-        g.update(DT, pads)
-        if g.state == "play":
-            break
+    g = begin(ch.Chomp(768, 128, seed=seed), slots)
+    assert g.state == "play"
     return g
 
 
@@ -252,8 +271,7 @@ def test_chomp_renders_every_state():
     g.render(c)  # empty lobby
     g.update(DT, pads_for(s0=0, s1=0))
     g.render(c)  # lobby with joiners
-    for _ in range(int(9 / DT)):
-        g.update(DT, pads_for(s0=0, s1=0))
+    begin(g, (0, 1))
     for i in range(int(20 / DT)):
         g.update(DT, pads_for(s0=pad.RIGHT if i % 90 < 45 else pad.DOWN, s1=pad.LEFT))
         g.render(c)
@@ -272,4 +290,4 @@ def test_chomp_rejects_small_display():
 
 
 def test_registry_has_all_games():
-    assert {"platformer", "flap", "chomp", "pong"} <= set(REGISTRY)
+    assert {"platformer", "flap", "chomp", "pong", "bomber", "sweep", "trivia"} <= set(REGISTRY)

@@ -5,7 +5,7 @@ import threading
 import time
 
 # Button bits sent by the phone controller.
-LEFT, RIGHT, UP, DOWN, A, B, START = 1, 2, 4, 8, 16, 32, 64
+LEFT, RIGHT, UP, DOWN, A, B, START, X, Y = 1, 2, 4, 8, 16, 32, 64, 128, 256
 
 SLOT_TIMEOUT = 20.0  # seconds without a heartbeat before a slot is freed
 KEY_TIMEOUT = 1.0    # held buttons are released if updates stop (phone lost signal)
@@ -58,8 +58,8 @@ class Pad:
             raise ValueError("the game is full")
 
     def set_keys(self, token: str, keys: int):
-        if isinstance(keys, bool) or not isinstance(keys, int) or not 0 <= keys <= 127:
-            raise ValueError("keys must be a whole number 0-127")
+        if isinstance(keys, bool) or not isinstance(keys, int) or not 0 <= keys <= 511:
+            raise ValueError("keys must be a whole number 0-511")
         with self._lock:
             i = self._tokens.get(token)
             if i is None:

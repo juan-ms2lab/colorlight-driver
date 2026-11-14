@@ -57,7 +57,7 @@ class Flap:
         self.width, self.height = width, height
         self.rng = random.Random(seed)
         self.t = 0.0
-        self.lobby = Lobby(8.0)
+        self.lobby = Lobby()
         self.joined: set[int] = set()
         self.state = "lobby"
         self._sprites: dict = {}
@@ -93,12 +93,15 @@ class Flap:
 
     # ---- update
 
+    def info(self) -> dict:
+        return {"state": self.state, "host": self.lobby.host}
+
     def update(self, dt: float, pads: list):
         self.t += dt
         joined = {i for i, k in enumerate(pads) if k is not None}
         if self.state == "lobby":
             self.joined = joined
-            if self.lobby.update(dt, joined):
+            if self.lobby.update(joined, pads):
                 self._start_round(joined)
         elif self.state == "play":
             self._play(dt, pads)
@@ -109,7 +112,7 @@ class Flap:
             self.timer -= dt
             if self.timer <= 0:
                 self.state, self.joined = "lobby", joined
-                self.lobby = Lobby(5.0)
+                self.lobby.reset()
                 self._reset_course()
 
     def _kill(self, b: Bird):
@@ -224,10 +227,7 @@ class Flap:
                 sprites.blit(canvas, self._bird_sprite(s, frame), START_X + s * STAGGER - 5, int(y) - 3)
             center_text(canvas, "PANEL FLAP", 40, 1.0, (255, 230, 0))
             center_text(canvas, "Tap A to flap. Last bird flying wins.", 62, 0.5)
-            if self.lobby.count is not None:
-                center_text(canvas, f"STARTS IN {self.lobby.count}", 92, 0.8, (120, 255, 120))
-            else:
-                center_text(canvas, "JOIN ON YOUR PHONE", 92, 0.8)
+            center_text(canvas, self.lobby.message, 92, 0.8, (120, 255, 120) if self.joined else (255, 255, 255))
             return
         for b in sorted(self.birds.values(), key=lambda b: b.alive):
             sx = int(b.x - self.cam)
