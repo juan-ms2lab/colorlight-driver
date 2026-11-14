@@ -1,7 +1,7 @@
 # LED panels controller
 
 Drives Colorlight 5A-75B receiver cards over raw Ethernet from a Linux computer. Images, GIFs, video, text,
-live drawing, camera, direct pixels, and sACN / Art-Net input, with a web control panel that phones can use.
+live drawing, camera, direct pixels, sACN / Art-Net input and DDP input for external apps, with a web control panel that phones can use.
 
 ## Setup on a new computer
 
@@ -32,24 +32,23 @@ The panels are driven by Colorlight 5A-75B receiver cards. The computer sends th
 so it must be on the same link and needs `CAP_NET_RAW` (the setup script grants it to the venv's Python).
 
 - The display is one canvas (`width` x `height` in `ledpanels.toml`, 768x128 here) that spans all the cards.
-  Everything (images, games, DMX) draws into that canvas, and the sender splits it into one packet per row
+  Everything (images, DMX, DDP) draws into that canvas, and the sender splits it into one packet per row
   segment, up to 497 pixels each.
 - Packet types (`src/ledpanels/protocol.py`): `0x55` pixel rows, `0x0A` brightness, `0x01` sync (latches the
   frame), `0x07` discover and `0x08` reply. The destination MAC is `11:22:33:44:55:66`.
 - `color_order` (BGR here), `flip_x` and `flip_y` are applied when each frame is sent, along with the gamma and
   white-balance curve. Brightness is sent to the cards as a packet.
-- Output runs at roughly 250 frames per second on a gigabit link; games and video are paced to their own rate.
+- Output runs at roughly 250 frames per second on a gigabit link; video and animations are paced to their own rate.
 
 Code layout:
 
 | Path | Role |
 |---|---|
 | `sender.py`, `protocol.py`, `sim.py` | raw-socket display, packet builders, hardware-free stand-in |
-| `engine.py` | runs one job at a time (image, video, text, game, DMX...), playlist, schedule, saved state |
+| `engine.py` | runs one job at a time (image, video, text, DMX, live frames...), playlist, schedule, saved state |
 | `web.py`, `access.py`, `static/index.html` | HTTP server, admin and guest roles with rate limits, the single-page UI |
 | `dmx.py` | sACN and Art-Net input |
 | `ddp.py` | DDP input for external apps |
-| `games/` | the games, plus `pad.py` (player slots and controller state) and `base.py` (shared helpers) |
 | `media.py`, `fonts.py`, `patterns.py`, `animations.py` | content helpers |
 | `tests/` | pytest suite, which uses the simulated display |
 
@@ -114,75 +113,8 @@ only this computer can administer. There is no HTTPS, so use it only on a networ
 
 ## Games
 
-The Games tab (also on the guest page) lists the games. Pressing Play starts one and turns the phone into a
-controller. Most games use a D-pad with A and B; others replace it with something better suited (answer buttons,
-a drawing canvas, a tap button, a touch pad). More phones can press "Join this game". Each phone keeps one
-player slot, and a game with no input for 2 minutes ends and blanks the panels. Guests can play too.
-
-- **Panel Run**: an original one-screen platformer (96x16 tiles of 8 pixels, the whole level always visible).
-  Up to 4 players race to the flag. Run, jump, stomp the walkers, hit coin boxes. Needs the 768x128 display.
-- **Pong**: 2 players; the computer plays any empty side.
-- **Panel Flap**: up to 4 birds share one course of pipes. Tap A to flap. When a bird reaches the right edge play
-  pauses and the whole screen scrolls over, so the course crosses every panel and keeps getting harder. The last
-  bird flying wins.
-- **Panel Chomp**: a random maze across the whole display (a new one each round), up to 4 players, one life each.
-  Eat the dots, avoid the wisps, grab a corner power pellet to chase them for a few seconds. If the maze is
-  cleared the game ends on a podium (1st, 2nd, 3rd by score, survivors ahead of anyone who was caught); if every
-  player is caught, the last one standing wins.
-
-Multiplayer games wait in a lobby until the **host presses START** on their phone. The host is the first player
-to join (if they leave, the next in line). Anyone joining mid-round plays the next one.
-
-- **Panel Bomber**: Bomberman-style arena across the whole display, up to 4 players. Drop bombs (A), blow up
-  crates for power-ups (bigger blasts, more bombs, speed), last player standing wins. After 75 seconds the arena
-  closes in from the edges so rounds always end.
-- **Panel Sweep**: Minesweeper for up to 6 players on one shared board (48x7 squares). A reveals (or clears around
-  a satisfied number), B flags. Revealing scores points, each mine costs one of two lives and stuns you for 3
-  seconds, correct flags earn +10 and wrong ones cost 10 at the end. Clear the board for a podium.
-- **Panel Trivia**: up to 8 players answer on their phones (four colored buttons). Faster correct answers score
-  more (500 to 1000). The host picks the deck (mixed, nerd, engineering, movies and TV, sci-fi, fantasy) and the
-  number of questions with the arrows, then presses START. Ends on a podium.
-- **Panel Hop**: Frogger across the whole display, up to 8 players. Cross a chain of biomes (meadow, river, forest,
-  swamp, desert, snow, volcano, then a huge multilane city highway) to the finish pond. Difficulty escalates toward
-  the end, there are checkpoints and 3 lives, and cars flash a warning before entering the screen. The test suite
-  includes a bot that proves every stretch is crossable (`LED_SLOW_TESTS=1` runs extra seeds).
-- **Panel Sketch**: Pictionary for up to 8 players. The server picks the drawer, who draws a secret word on their
-  phone while everyone else types guesses. Every player draws once per cycle (host picks 1 to 3 cycles with the
-  arrows). Faster correct guesses score more, the drawer earns a bonus, and letters are revealed as time runs out.
-  The right end of the display holds the timer, hint and leaderboard. Guessers never receive the word.
-- **Panel Tug of War**: 2 to 8 players are split into two teams (random, balanced) and tap a big button on their
-  phones to drag a flag along a rope. A team's pull is its taps divided by its size, so uneven teams are fair.
-  Drag the flag to the far line to win a round at once, otherwise the side holding the flag when the timer ends
-  wins (a dead heat goes to overtime). The host picks best of 1, 3 or 5 (LEFT/RIGHT) and 10 to 30 seconds a round
-  (UP/DOWN). Taps are sent as messages and capped at 12 per second per player.
-- **Panel Hockey**: air hockey across the whole display for up to 4 players. Players 1 and 3 defend the left goal,
-  2 and 4 the right, and the computer plays any side with nobody on it. Each phone shows a touch pad: slide your
-  finger to move your mallet inside your half and hit the puck into the other goal. The host picks first to 3, 5,
-  7 or 10 goals with the arrows. Players can join or leave mid-match.
-
-Trivia questions come from Open Trivia DB (https://opentdb.com, CC BY-SA 4.0), downloaded once into
-`src/ledpanels/data/trivia.json` so the game works offline. Refresh or enlarge it with
-`python scripts/fetch_trivia.py`; `--retag` re-sorts the saved questions into decks without downloading.
-
-To add a game, create a class in `src/ledpanels/games/` with `id`, `title`, `description`, `max_players`,
-`controls`, `update(dt, pads)` and `render(canvas)`, then list it in `REGISTRY` in `games/__init__.py`.
-`pads` has one entry per player slot: `None` if nobody joined, else the held buttons as a bitmask
-(`LEFT 1, RIGHT 2, UP 4, DOWN 8, A 16, B 32, START 64, X 128, Y 256`; see `games/pad.py`). Rendering is plain numpy
-at the display's native resolution (RGB), and `games/base.py` has the shared host-START `Lobby`, tile movement,
-podium and text helpers.
-
-Optional hooks:
-
-- `info()` returns public state (lobby, scores, timers) that is merged into `/api/status` and `/api/game/state`.
-- `private_info(slot)` returns what only that player may see (the word to draw, their own team).
-- `on_message(slot, data)` receives free-form messages from `POST /api/game/message` (taps, drawing strokes,
-  guesses, touch positions). Validate everything: any phone can send anything.
-- `layout` picks the phone controller: `dpad` (default), `quiz` (four answer buttons), `sketch` (draw and guess),
-  `tug` (tap button) or `air` (touch pad). A new layout needs a pane in `static/index.html`; the page polls
-  `/api/game/state` to draw it.
-
-Games that need messages should handle them in `on_message` and keep per-player rate limits (see `tug.py` and
-`sketch.py`). Tests follow `tests/test_games_multiplayer.py` (`begin`, `pads_for`, `DT`).
+The phone-controlled games moved to their own project, https://github.com/juan-ms2lab/panel-games, which sends
+frames to this driver over DDP (see External apps).
 
 ## sACN and Art-Net
 
@@ -194,9 +126,9 @@ after `timeout` seconds without data. Ports: UDP 5568 (sACN, multicast 239.255.x
 
 ## External apps (DDP)
 
-Other programs (games, the theremin at https://github.com/juan-ms2lab/theremin, xLights, WLED tools) can push frames
-with DDP (Distributed Display Protocol) over UDP. It is off by default; enable it with `ddp_port = 4048` in
-`ledpanels.toml` and restart `serve`. It listens on the same address as the web server (`host`), so with
+Other programs (the games in panel-games, the theremin at https://github.com/juan-ms2lab/theremin, xLights) can
+push frames with DDP (Distributed Display Protocol) over UDP. It is off by default; enable it with
+`ddp_port = 4048` in `ledpanels.toml` and restart `serve`. It listens on the same address as the web server (`host`), so with
 `host = "127.0.0.1"` only programs on this computer can send. DDP has no authentication: anything that can
 reach the port can take over the panels, regardless of guest settings.
 
@@ -222,8 +154,6 @@ guest window or an admin cookie from `POST /api/login {"pin": "..."}`.
 | GET `/api/media`, `/api/media/<name>/thumb`, `/api/patterns`, `/api/fonts`, `/api/preview.png` | read-only info | guest, admin |
 | POST `/api/play` | start a job (see below) | guest (limited kinds), admin |
 | POST `/api/frame` | raw RGB or RGBA bytes, one full frame (live drawing) | guest, admin |
-| GET `/api/games`; POST `/api/game/join`, `/api/game/input` `{token, keys}`, `/api/game/leave` | game catalog and controller | guest, admin |
-| POST `/api/game/message` `{token, data}`, `/api/game/state` `{token}` | game-specific messages (drawing, guesses) and per-player state | guest, admin |
 | POST `/api/stop` | stop and blank | admin |
 | PUT/DELETE `/api/media/<name>` | upload / delete a file | admin |
 | POST `/api/brightness` `{percent}`, `/api/calibration` `{gamma, balance:[r,g,b]}` | output tuning | admin |
@@ -251,8 +181,6 @@ Jobs for `/api/play`: `{"kind": "image|video", "name": "file", "fit": "contain|c
 
 ## Notes
 
-- Games are verified by the test suite, including a bot that proves Panel Hop is completable.
-  `LED_SLOW_TESTS=1 uv run pytest` runs extra Hop seeds.
 - If the cable is unplugged, output retries automatically and recovers when the link returns.
 - Fonts: drop `.ttf` or `.otf` files into a `fonts/` folder next to `ledpanels.toml`; system fonts are listed too.
 - `ledpanels benchmark` measures send speed; `ledpanels setup` finds the interface.
@@ -260,5 +188,4 @@ Jobs for `/api/play`: `{"kind": "image|video", "name": "file", "fit": "contain|c
 
 ## License
 
-GNU General Public License v3.0, see `LICENSE`. The bundled trivia questions are from Open Trivia DB under
-CC BY-SA 4.0 (see the Games section).
+GNU General Public License v3.0, see `LICENSE`.

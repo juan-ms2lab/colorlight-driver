@@ -16,8 +16,7 @@ import numpy as np
 import segno
 
 from . import access as acc
-from . import fonts, games, patterns
-from .games.pad import PAD
+from . import fonts, patterns
 from .media import IMAGE_EXT, VIDEO_EXT, first_frame, fit
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -139,8 +138,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True}, headers={"Set-Cookie": "ledsession=; Max-Age=0; Path=/"})
         if role is None:
             raise PermissionError("the panels are not open to guests right now")
-        if self._game_route(method, path, role, ip):
-            return
         if role == "guest":
             return self._guest_route(method, path)
 
@@ -171,41 +168,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         return self._route(method, path)
 
-    def _game_route(self, method, path, role, ip) -> bool:
-        """Game catalog and controller endpoints, open to guests and admins. Returns True if handled."""
-        ac = self.server.access
-        if method == "GET" and path == "/api/games":
-            self._json(games.catalog())
-            return True
-        if method == "POST" and path in ("/api/game/join", "/api/game/input", "/api/game/leave",
-                                         "/api/game/message", "/api/game/state"):
-            if role == "guest" and ac.locked:
-                raise PermissionError("guest control is paused by the host")
-            if not ac.limiter.allow((ip, "game"), 60, 90):
-                self._error(429, "slow down")
-                return True
-            body = self._json_body()
-            token = str(body.get("token", ""))
-            if path == "/api/game/join":
-                slot, token = PAD.join(ip if role == "guest" else None)
-                self._json({"slot": slot, "token": token, "game": games.status()})
-            elif path == "/api/game/input":
-                PAD.set_keys(token, body.get("keys"))
-                self._json({"ok": True})
-            elif path == "/api/game/message":
-                data = body.get("data")
-                if len(json.dumps(data)) > 40000:
-                    raise ValueError("message too large")
-                PAD.put_message(token, data)
-                self._json({"ok": True})
-            elif path == "/api/game/state":
-                self._json(games.private_state(token))
-            else:
-                PAD.leave(token)
-                self._json({"ok": True})
-            return True
-        return False
-
     def _guest_route(self, method, path):
         ac, player = self.server.access, self.server.player
         ip = self.client_address[0]
@@ -235,8 +197,6 @@ class Handler(BaseHTTPRequestHandler):
         cap = self.server.access.guest_max_seconds
         d = job.get("duration")
         out["duration"] = min(d, cap) if isinstance(d, (int, float)) and not isinstance(d, bool) and d > 0 else cap
-        if job["kind"] == "game":
-            out.pop("duration")  # games end on their own after a stretch with no button presses
         return out
 
     def _route(self, method, path):
