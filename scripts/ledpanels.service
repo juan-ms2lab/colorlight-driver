@@ -1,0 +1,24 @@
+# System service: runs `ledpanels serve` at boot without anyone logging in, and without root
+# (it only gets CAP_NET_RAW for the raw sockets). Edit User, the paths and eth0, then:
+#   sudo cp scripts/ledpanels.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ledpanels
+# Logs: journalctl -u ledpanels -f. Stop it before running ledpanels by hand.
+[Unit]
+Description=LED panel controller
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/ledpanels
+# "+" runs this one step as root: bring up the panel link, which NetworkManager leaves alone (see README).
+ExecStartPre=+/usr/sbin/ip link set eth0 up
+ExecStart=/home/pi/ledpanels/.venv/bin/ledpanels -c /home/pi/ledpanels/ledpanels.toml serve
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=yes
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

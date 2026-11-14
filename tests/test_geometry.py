@@ -1,3 +1,6 @@
+import threading
+import time
+
 import numpy as np
 import pytest
 
@@ -123,3 +126,16 @@ def test_sync_gap_from_config(tmp_path, make, monkeypatch):
     monkeypatch.setattr(sender.time, "sleep", slept.append)
     make(4, 1, sync_gap=s["sync_gap"]).show()
     assert slept == [0.006]
+
+
+def test_ip_pattern_draws_on_each_display(make):
+    d = make(768, 64, displays=STRIPS)
+    stop = threading.Event()
+    t = threading.Thread(target=patterns.run_pattern, args=("ip", d, stop), kwargs={"port": 8080})
+    t.start()
+    end = time.monotonic() + 3
+    while not (d.canvas[:32].any() and d.canvas[32:].any()) and time.monotonic() < end:
+        stop.wait(0.01)  # time.sleep is stubbed out by the fixture
+    stop.set()
+    t.join()
+    assert d.canvas[:32].any() and d.canvas[32:].any()

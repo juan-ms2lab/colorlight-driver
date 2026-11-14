@@ -24,7 +24,8 @@ finds the network interface the panels are on. Then check `ledpanels.toml`: the 
 - Python: see `examples/api_demo.py`. Only one program should send to the panels at a time.
 - `ledpanels --simulate serve` runs everything without hardware.
 - Optional: `ledpanels install-service` (start the server at login) and `ledpanels install-launcher`
-  (application-menu entry). Nothing starts automatically unless you run these.
+  (application-menu entry). Nothing starts automatically unless you run these. For a headless machine such as
+  a Raspberry Pi, `scripts/ledpanels.service` starts it at boot instead (see Raspberry Pi).
 
 ## How it works
 
@@ -36,6 +37,9 @@ so it must be on the same link and needs `CAP_NET_RAW` (the setup script grants 
   segment, up to 497 pixels each.
 - Packet types (`src/ledpanels/protocol.py`): `0x55` pixel rows, `0x0A` brightness, `0x01` sync (latches the
   frame), `0x07` discover and `0x08` reply. The destination MAC is `11:22:33:44:55:66`.
+- The brightness packet is sent as `0x0A` then `b, b, b, 0xFF` (77 bytes). Another driver that also works on a
+  5A-75B sends `0x0A, 0xFF, b, b, b` instead. Both reportedly work on the cards they were tried on; which bytes
+  matter has not been checked across cards or firmware versions.
 - `color_order` (BGR here), `flip_x` and `flip_y` are applied when each frame is sent, along with the gamma and
   white-balance curve. Brightness is sent to the cards as a packet.
 - Output runs at roughly 250 frames per second on a gigabit link; video and animations are paced to their own rate.
@@ -51,6 +55,7 @@ Code layout:
 | `ddp.py` | DDP input for external apps |
 | `media.py`, `fonts.py`, `patterns.py`, `animations.py` | content helpers |
 | `tests/` | pytest suite, which uses the simulated display |
+| `scripts/` | `setup.sh` (first-time setup), `ledpanels.service` (system unit for boot start on a Pi) |
 
 ## Configuration
 
@@ -178,6 +183,27 @@ Jobs for `/api/play`: `{"kind": "image|video", "name": "file", "fit": "contain|c
 - Rows of the second (chained) card tear or flicker: raise `sync_gap`. `send()` only queues the packets, so on a
   slow NIC the sync can overtake the pixel rows still on the wire. A Raspberry Pi 3B+ (USB NIC, `lan78xx`) takes
   about 5 ms to put a 1536x32 frame on the wire and needs `sync_gap = 0.006`; 0.001 tore the second card's rows.
+
+## Raspberry Pi
+
+Tested setup: a Pi 3B+ with the panels on its `eth0` (USB NIC, `lan78xx`) and Wi-Fi for the web panel.
+
+- NetworkManager must leave the panel interface alone, otherwise the cards stop answering after a reboot.
+  Create `/etc/NetworkManager/conf.d/colorlight.conf` with
+  ```
+  [keyfile]
+  unmanaged-devices=interface-name:eth0
+  ```
+  and restart NetworkManager, or for the current boot only `sudo nmcli dev set eth0 managed no`.
+- Set `sync_gap = 0.006` (see Troubleshooting): the USB NIC needs about 5 ms to send a frame.
+- The `lan78xx` NIC can hang if the panel link drops while sending: `tx_errors` climb (`ip -s link show eth0`),
+  no packets go out, and dmesg shows "kevent 0 may have been dropped". Only a reboot of the Pi fixed it; taking
+  the link down and up or rebinding the USB device did not.
+- Start at boot: `scripts/ledpanels.service` is a system unit that runs `ledpanels serve` as a normal user with
+  only `CAP_NET_RAW` (no root, no `setcap` needed, no login). Edit `User`, the paths and the interface, copy it to
+  `/etc/systemd/system/` and `sudo systemctl enable --now ledpanels`.
+- To find the web panel on a headless Pi, play the `ip` pattern (hostname, IP and port on every display) and turn
+  on autoplay so it comes back at boot; `ledpanels test ip` shows it from the command line.
 
 ## Notes
 

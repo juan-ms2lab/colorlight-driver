@@ -260,6 +260,7 @@ def run(args, s):
 
 def serve(args, s, d):
     base = Path(args.config).resolve().parent
+    patterns.WEB_PORT = s["port"]
     player = engine.Player(d, base / s["media_dir"], base / s["state_file"])
     player.start()
     if s["ddp_port"]:
@@ -293,7 +294,8 @@ def dispatch(args, s, d):
         hold(d)
     elif args.cmd == "test":
         kw = {"ruler": {"block": args.block}, "tiles": {"size": args.block},
-              "diagonal": {"start": args.start, "step": args.step}}.get(args.pattern, {})
+              "diagonal": {"start": args.start, "step": args.step},
+              "ip": {"port": s["port"]}}.get(args.pattern, {})
         print("Running. Ctrl-C to stop.")
         patterns.run_pattern(args.pattern, d, **kw)
     elif args.cmd == "text":

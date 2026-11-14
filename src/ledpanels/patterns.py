@@ -1,12 +1,15 @@
 """Test patterns for identifying panel layout and orientation."""
 
 import colorsys
+import socket
 import time
 
 import cv2
 import numpy as np
 
 from .timing import hold, pause, running
+
+WEB_PORT = 8080  # shown by the ip pattern; `serve` sets the real port
 
 
 def _regions(display):
@@ -94,8 +97,33 @@ def sweep(display, stop=None, deadline=None):
             pause(stop, 0.05)
 
 
+def ip(display, stop=None, deadline=None, port=None):
+    """Hostname, IP address and web port on every display, so a headless setup can be found.
+
+    Refreshed every 3 s because Wi-Fi may come up after the server starts at boot.
+    """
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    while running(stop, deadline):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("192.0.2.1", 9))  # picks the outgoing interface; sends nothing
+                addr = s.getsockname()[0]
+        except OSError:
+            addr = "no network"
+        text = f"{socket.gethostname()} {addr}:{port or WEB_PORT}"
+        display.clear()
+        for x, y, w, h in _regions(display):
+            (tw, th), _ = cv2.getTextSize(text, font, 1, 1)
+            scale = min((w - 4) / tw, h * 0.6 / th)
+            (tw, th), _ = cv2.getTextSize(text, font, scale, 1)
+            cv2.putText(display.canvas, text, (x + (w - tw) // 2, y + (h + th) // 2), font, scale,
+                        (255, 255, 255), max(1, round(scale)), cv2.LINE_AA)
+        until = time.monotonic() + 3
+        hold(display.show, stop, min(until, deadline) if deadline else until)
+
+
 STATIC = {"border": border, "ruler": ruler, "tiles": tiles, "diagonal": diagonal}
-ANIMATED = {"rainbow": rainbow, "sweep": sweep}
+ANIMATED = {"ip": ip, "rainbow": rainbow, "sweep": sweep}
 NAMES = sorted(STATIC) + sorted(ANIMATED)
 
 
@@ -106,4 +134,4 @@ def run_pattern(name: str, display, stop=None, deadline=None, **kw):
         STATIC[name](display, **kw)
         hold(display.show, stop, deadline)
     else:
-        ANIMATED[name](display, stop=stop, deadline=deadline)
+        ANIMATED[name](display, stop=stop, deadline=deadline, **kw)
