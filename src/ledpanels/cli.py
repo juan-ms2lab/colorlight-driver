@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import re
 import shlex
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import access, animations, engine, media, patterns, timing, web
+from . import access, animations, dmx, engine, media, patterns, timing, web
 from .sender import Display, discover
 from .sim import SimDisplay
 
@@ -91,6 +92,11 @@ def build_parser():
     bm = sub.add_parser("benchmark", help="measure how fast frames can be sent")
     bm.add_argument("--frames", type=int, default=120)
 
+    dt = sub.add_parser("dmx-test", help="send a test rainbow as sACN or Art-Net (try the DMX input without other software)")
+    dt.add_argument("--protocol", choices=["sacn", "artnet"], default="sacn")
+    dt.add_argument("--target", help="destination IP (default: sACN multicast / Art-Net broadcast)")
+    dt.add_argument("--seconds", type=float, default=20)
+
     su = sub.add_parser("setup", help="find which network interface the panels are on")
     su.add_argument("--write", action="store_true", help="save the interface into the config file")
     return p
@@ -151,6 +157,19 @@ def setup(args, s):
     return 0
 
 
+def dmx_test(args, s):
+    base = Path(args.config).resolve().parent
+    cfg = dict(dmx.DEFAULT_CONFIG)
+    try:
+        cfg.update(json.loads((base / s["state_file"]).read_text()).get("dmx", {}))
+    except (OSError, ValueError):
+        pass
+    print(f"Sending {args.protocol} test pattern for {args.seconds:g}s using the saved DMX grid {cfg['width']}x{cfg['height']}, "
+          f"first universe {cfg['start_universe']}. Start listening in the DMX tab first.")
+    dmx.send_test(cfg, args.protocol, args.target, args.seconds)
+    return 0
+
+
 def benchmark(args, d):
     rng = np.random.default_rng(0)
     frames = [rng.integers(0, 256, d.canvas.shape, dtype=np.uint8) for _ in range(4)]
@@ -201,6 +220,8 @@ def run(args, s):
         return install(args)
     if args.cmd == "setup":
         return setup(args, s)
+    if args.cmd == "dmx-test":
+        return dmx_test(args, s)
 
     level = round(255 * max(0, min(100, s["brightness"])) / 100)
     if args.simulate:

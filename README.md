@@ -26,7 +26,7 @@ finds the network interface the panels are on. Then check `ledpanels.toml`: the 
 
 In the Guests tab, open guest access for a set time. Guests scan the QR code or type the address (same network
 as this computer). They can draw, send text, play patterns and library items, each for at most `guest_max_seconds`.
-They cannot upload, delete, change settings, or use the camera, screen or DMX. "Pause guest control" ignores
+They cannot upload, delete, change settings, or use the camera or DMX. "Pause guest control" ignores
 their input without closing the page. Closing guest access, or the timer ending, locks them out again.
 
 Remote admin: set `admin_pin` in the config (or `LEDPANELS_PIN`), then log in from another device. Without a PIN,
@@ -62,7 +62,7 @@ Jobs for `/api/play`: `{"kind": "image|video", "name": "file", "fit": "contain|c
 `{"kind": "text", "text": "Hi", "color": [r,g,b], "speed": 100, "font": "name", "size": 60}`,
 `{"kind": "clock"}`, `{"kind": "fill", "color": [r,g,b]}`, `{"kind": "pattern", "name": "rainbow"}`,
 `{"kind": "playlist", "items": [...], "loop": true}`, `{"kind": "camera", "device": 0}`,
-`{"kind": "screen", "monitor": 1}` (X11 only), `{"kind": "dmx"}`. Any job accepts `"duration"` in seconds.
+`{"kind": "dmx"}`. Any job accepts `"duration"` in seconds.
 
 ## Notes
 

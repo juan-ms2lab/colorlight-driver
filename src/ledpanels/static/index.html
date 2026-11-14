@@ -131,11 +131,6 @@
         <label><input type="checkbox" id="camMirror" checked> mirror</label>
         <button class="primary" id="playCam">Send to panels: camera</button>
       </div>
-      <h3>Screen mirror (X11 sessions only)</h3>
-      <div class="row">
-        <label>Monitor</label><input id="scrMon" type="number" min="0" max="8" value="1" class="num">
-        <button class="primary" id="playScreen">Send to panels: screen</button>
-      </div>
     </div>
   </section>
 
@@ -416,7 +411,6 @@ $('#playText').onclick = () => {
 $('#playClock').onclick = () => play(withDuration({ kind: 'clock', fmt: $('#clockFmt').value, color: hex($('#clockColor').value), font: $('#txtFont').value }));
 $('#playFill').onclick = () => play(withDuration({ kind: 'fill', color: hex($('#fillColor').value) }));
 $('#playCam').onclick = () => play(withDuration({ kind: 'camera', device: +$('#camDev').value, mirror: $('#camMirror').checked, fit: $('#fit').value === 'contain' ? 'cover' : $('#fit').value }));
-$('#playScreen').onclick = () => play(withDuration({ kind: 'screen', monitor: +$('#scrMon').value, fit: $('#fit').value }));
 function loadPatterns() {
   api('/api/patterns').then((names) => {
     $('#patterns').replaceChildren(); $('#plKind').replaceChildren();

@@ -13,7 +13,7 @@ import numpy as np
 from . import animations, dmx, fonts, media, patterns
 from .timing import hold, pause
 
-KINDS = {"image", "video", "pattern", "text", "clock", "fill", "paint", "playlist", "camera", "screen", "dmx"}
+KINDS = {"image", "video", "pattern", "text", "clock", "fill", "paint", "playlist", "camera", "dmx"}
 FITS = {"contain", "cover", "stretch"}
 DEFAULT_ITEM_SECONDS = 10
 _HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -72,15 +72,6 @@ def validate(item, media_dir, in_playlist: bool = False):
         dev = item.get("device", 0)
         if isinstance(dev, bool) or not isinstance(dev, int) or not 0 <= dev <= 9:
             raise ValueError("camera device must be 0-9")
-    elif kind == "screen":
-        mon = item.get("monitor", 1)
-        if isinstance(mon, bool) or not isinstance(mon, int) or not 0 <= mon <= 8:
-            raise ValueError("monitor must be 0-8")
-        r = item.get("region")
-        if r is not None and not (isinstance(r, list) and len(r) == 4
-                                  and all(isinstance(v, int) and not isinstance(v, bool) for v in r)
-                                  and r[2] > 0 and r[3] > 0 and r[0] >= 0 and r[1] >= 0):
-            raise ValueError("region must be [x, y, width, height]")
     elif kind == "playlist":
         if in_playlist:
             raise ValueError("playlists cannot be nested")
@@ -121,9 +112,6 @@ def run_item(display, item, media_dir, stop, in_playlist: bool = False):
     elif kind == "camera":
         media.play_camera(display, item.get("device", 0), fit if "fit" in item else "cover",
                           item.get("mirror", True), stop=stop, deadline=deadline)
-    elif kind == "screen":
-        media.play_screen(display, item.get("monitor", 1), item.get("region"), fit,
-                          stop=stop, deadline=deadline)
     elif kind == "fill":
         display.canvas[:] = color
         hold(display.show, stop, deadline)

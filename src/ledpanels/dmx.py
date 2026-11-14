@@ -1,5 +1,6 @@
 """sACN (E1.31) and Art-Net input, mapped onto a virtual pixel grid and scaled to the display."""
 
+import os
 import select
 import socket
 import struct
@@ -81,6 +82,33 @@ def parse_sacn(data: bytes):
     universe = struct.unpack(">H", data[113:115])[0]
     name = data[44:108].split(b"\0")[0].decode("utf-8", "replace")
     return universe, data[126 : 126 + max(0, count)], data[108], data[22:38].hex(), name
+
+
+def build_sacn(universe, data, priority=100, cid=b"\x01" * 16, name="ledpanels", options=0, seq=0):
+    pkt = bytearray(126 + len(data))
+    pkt[0:2] = struct.pack(">H", 0x10)
+    pkt[4:16] = _ACN_ID
+    pkt[16:18] = struct.pack(">H", 0x7000 | (len(pkt) - 16))
+    pkt[18:22] = struct.pack(">I", 4)
+    pkt[22:38] = cid
+    pkt[38:40] = struct.pack(">H", 0x7000 | (len(pkt) - 38))
+    pkt[40:44] = struct.pack(">I", 2)
+    pkt[44:108] = name.encode()[:63].ljust(64, b"\0")
+    pkt[108] = priority
+    pkt[111] = seq & 255
+    pkt[112] = options
+    pkt[113:115] = struct.pack(">H", universe)
+    pkt[115:117] = struct.pack(">H", 0x7000 | (len(pkt) - 115))
+    pkt[117], pkt[118] = 2, 0xA1
+    pkt[121:123] = struct.pack(">H", 1)
+    pkt[123:125] = struct.pack(">H", len(data) + 1)
+    pkt[126:] = data
+    return bytes(pkt)
+
+
+def build_artnet(universe, data, seq=0):
+    return (b"Art-Net\x00" + struct.pack("<H", 0x5000) + bytes([0, 14, seq & 255, 0, universe & 255, universe >> 8])
+            + struct.pack(">H", len(data)) + bytes(data))
 
 
 def parse_artnet(data: bytes):
@@ -284,3 +312,41 @@ def run(display, cfg, stop=None, deadline=None):
     finally:
         _active = None
         inp.stop()
+
+
+def send_test(cfg, protocol: str = "sacn", target: str | None = None, seconds: float = 20, fps: float = 20):
+    """Send a moving rainbow as sACN or Art-Net, so input can be tried without lighting software."""
+    c = validate_config(cfg)
+    w, h = c["width"], c["height"]
+    hue_x = (np.arange(w) * 179 // w).astype(np.uint8)
+    cid = os.urandom(16)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 4)
+    end, seq = time.monotonic() + seconds, 0
+    while time.monotonic() < end:
+        hsv = np.zeros((h, w, 3), np.uint8)
+        hsv[:, :, 0] = (hue_x.astype(int) + int(time.monotonic() * 30)) % 180
+        hsv[:, :, 1:] = 255
+        rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+        # Invert the receiver's color order and serpentine mapping so the picture comes out as drawn.
+        rgb = rgb[:, :, ["RGB".index(ch) for ch in c["order"]]]
+        if c["serpentine"]:
+            rgb = rgb.copy()
+            rgb[1::2] = rgb[1::2, ::-1]
+        flat = rgb.reshape(-1)
+        for i in range(universe_count(c)):
+            u = c["start_universe"] + i
+            if c["layout"] == "per_row":
+                chunk = flat[i * w * 3 : (i + 1) * w * 3]
+            else:
+                chunk = flat[i * CHANNELS_PER_UNIVERSE : (i + 1) * CHANNELS_PER_UNIVERSE]
+            chunk = bytes(chunk) + bytes(max(0, 512 - len(chunk)))
+            if protocol == "sacn":
+                dest = (target or f"239.255.{u >> 8}.{u & 255}", SACN_PORT)
+                sock.sendto(build_sacn(u, chunk, cid=cid, name="ledpanels test", seq=seq), dest)
+            else:
+                sock.sendto(build_artnet(u, chunk, seq=seq), (target or "255.255.255.255", ARTNET_PORT))
+        seq += 1
+        time.sleep(1 / fps)
+    sock.close()

@@ -35,6 +35,13 @@ def make(**kw):
     return dmx.DmxInput({"width": 4, "height": 2, **kw})
 
 
+def test_builders_round_trip():
+    data = bytes(range(60)) + bytes(452)
+    uni, got, prio, cid, name = dmx.parse_sacn(dmx.build_sacn(300, data, priority=77, name="x"))
+    assert (uni, got, prio, name) == (300, data, 77, "x")
+    assert dmx.parse_artnet(dmx.build_artnet(0x0105, data)) == (0x0105, data)
+
+
 def test_parse_sacn():
     uni, data, prio, cid, name = dmx.parse_sacn(sacn_packet(7, bytes([1, 2, 3]), 90, name="desk"))
     assert (uni, data, prio, name) == (7, bytes([1, 2, 3]), 90, "desk")

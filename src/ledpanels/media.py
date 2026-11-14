@@ -135,22 +135,3 @@ def play_camera(display, device: int = 0, mode: str = "cover", mirror: bool = Tr
         _paced(display, grab, mode, max_fps, stop, deadline)
     finally:
         cap.release()
-
-
-def play_screen(display, monitor: int = 1, region=None, mode: str = "contain",
-                max_fps: float = 20, stop=None, deadline=None):
-    """Mirror a monitor or a [x, y, w, h] region of this computer's screen (X11 only)."""
-    if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
-        raise ValueError("Screen mirroring needs an X11 session; Wayland blocks screen capture")
-    import mss
-
-    with mss.mss() as sct:
-        if region:
-            x, y, w, h = region
-            area = {"left": x, "top": y, "width": w, "height": h}
-        elif 0 <= monitor < len(sct.monitors):
-            area = sct.monitors[monitor]
-        else:
-            raise ValueError(f"no monitor {monitor}")
-        _paced(display, lambda: np.ascontiguousarray(np.asarray(sct.grab(area))[:, :, [2, 1, 0]]),
-               mode, max_fps, stop, deadline)
