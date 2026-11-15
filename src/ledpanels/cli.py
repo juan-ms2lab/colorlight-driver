@@ -30,6 +30,8 @@ DEFAULTS = {
     "flip_y": False,
     "sync_gap": 0.001,
     "display": [],
+    "panel_width": 0,  # 0 = cabinet size reported by the receiver card
+    "panel_height": 0,
     "host": "127.0.0.1",
     "port": 8080,
     "media_dir": "media",
@@ -242,10 +244,15 @@ def run(args, s):
         d = SimDisplay(s["width"], s["height"], [e["canvas"] for e in s["display"]])
     else:
         firmware = s["firmware"]
-        if not firmware:
+        if not firmware or not s["panel_width"]:
             found = discover(s["interface"])
-            firmware = max((r.fw_major for r in found), default=0)
+            firmware = firmware or max((r.fw_major for r in found), default=0)
             print(f"Detected {len(found)} receiver(s), firmware major {firmware}")
+            if found and not s["panel_width"]:
+                # ponytail: cards report only their cabinet (area per card), not panel modules; set
+                # panel_width/panel_height in ledpanels.toml for per-panel tiles
+                s["panel_width"], s["panel_height"] = found[0].width, found[0].height
+                print(f"Panel size from receiver cabinet: {found[0].width}x{found[0].height}")
         d = Display(s["interface"], s["width"], s["height"], level, firmware, s["color_order"],
                     flip_x=s["flip_x"], flip_y=s["flip_y"],
                     sync_gap=s["sync_gap"], displays=s["display"])
@@ -261,6 +268,7 @@ def run(args, s):
 def serve(args, s, d):
     base = Path(args.config).resolve().parent
     patterns.WEB_PORT = s["port"]
+    patterns.PANEL_WIDTH, patterns.PANEL_HEIGHT = s["panel_width"], s["panel_height"]
     player = engine.Player(d, base / s["media_dir"], base / s["state_file"], s["brightness"])
     player.start()
     if s["ddp_port"]:
@@ -293,7 +301,8 @@ def dispatch(args, s, d):
         d.fill(args.rgb)
         hold(d)
     elif args.cmd == "test":
-        kw = {"ruler": {"block": args.block}, "tiles": {"size": args.block},
+        kw = {"ruler": {"block": args.block},
+              "tiles": {"width": s["panel_width"] or None, "height": s["panel_height"] or None},
               "diagonal": {"start": args.start, "step": args.step},
               "ip": {"port": s["port"]}}.get(args.pattern, {})
         print("Running. Ctrl-C to stop.")

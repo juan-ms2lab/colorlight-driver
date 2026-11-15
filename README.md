@@ -101,7 +101,7 @@ card = [768, 160]
 
 Rows of different displays that land on the same card row are merged into one run from the leftmost x (gaps are
 sent black), since chained cards only showed the second display when the rows were sent separately. The mapping
-is precomputed at startup. `ledpanels test border` and `test tiles` mark each display separately, so you can
+is precomputed at startup. `ledpanels test border` marks each display; `test tiles` gives every panel (`panel_width` x `panel_height`, default the card's reported cabinet size) its own color and number, counting left to right then top to bottom, so you can
 check order and orientation; the global `flip_x`/`flip_y` still apply to the whole canvas first.
 
 Saved settings (calibration, schedule, playlist, DMX, autoplay) are in `state.json`, which is not committed.

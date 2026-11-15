@@ -4,9 +4,9 @@ import colorsys
 import socket
 import time
 
-import cv2
 import numpy as np
 
+from . import pixelfont
 from .timing import hold, pause, running
 
 WEB_PORT = 8080  # shown by the ip pattern; `serve` sets the real port
@@ -30,20 +30,32 @@ def border(display):
     display.show()
 
 
-def tiles(display, size: int = 128):
-    """Number each tile (size x size, capped at the display height) of each display with a frame and a large
-    digit to reveal flips, rotations and the display order."""
+PANEL_COLORS = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255),
+                (255, 128, 0), (128, 0, 255)]  # 8, so stacked rows of 6 or 12 panels differ vertically
+PANEL_WIDTH = 0  # `panel_width` / `panel_height` in ledpanels.toml; height 0 = the display's height
+PANEL_HEIGHT = 0
+
+
+def tiles(display, width=None, height=None):
+    """Each panel its own color with a white seam on its top and left edges and its number, counted left to
+    right, then top to bottom, continuing across displays, so swapped, flipped or misordered panels stand out."""
     display.clear()
+    pw, ph = width or PANEL_WIDTH or 128, height or PANEL_HEIGHT
     c, i = display.canvas, 0
     for rx, ry, rw, rh in _regions(display):
-        s = min(size, rh)
-        for x in range(rx, rx + rw, s):
-            i += 1
-            cv2.rectangle(c, (x, ry), (x + s - 1, ry + s - 1), (0, 80, 255), 1)
-            cv2.putText(c, str(i), (x + s * 30 // 128, ry + s - s * 25 // 128), cv2.FONT_HERSHEY_SIMPLEX,
-                        3 * s / 128, (255, 255, 255), max(1, 6 * s // 128))
-            cv2.putText(c, "TOP", (x + 8, ry + max(12, 20 * s // 128)), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.6 * max(s, 64) / 128, (255, 255, 0), 1)
+        h = min(ph or rh, rh)
+        for y in range(ry, ry + rh, h):
+            for x in range(rx, rx + rw, pw):
+                i += 1
+                color = PANEL_COLORS[(i - 1) % len(PANEL_COLORS)]
+                tile = c[y : min(y + h, ry + rh), x : min(x + pw, rx + rw)]
+                tile[:] = color
+                tile[0, :] = tile[:, 0] = 255
+                th, tw = tile.shape[:2]
+                k = max(1, min(th * 3 // 5 // 5, tw * 3 // 4 // pixelfont.text_width(str(i))))
+                ink = (0, 0, 0) if sum(color) > 400 else (255, 255, 255)
+                pixelfont.draw_text(tile, (tw - pixelfont.text_width(str(i), k)) // 2, (th - 5 * k) // 2, str(i),
+                                    ink, k)
     display.show()
 
 
@@ -102,7 +114,6 @@ def ip(display, stop=None, deadline=None, port=None):
 
     Refreshed every 3 s because Wi-Fi may come up after the server starts at boot.
     """
-    font = cv2.FONT_HERSHEY_SIMPLEX
     while running(stop, deadline):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -113,11 +124,9 @@ def ip(display, stop=None, deadline=None, port=None):
         text = f"{socket.gethostname()} {addr}:{port or WEB_PORT}"
         display.clear()
         for x, y, w, h in _regions(display):
-            (tw, th), _ = cv2.getTextSize(text, font, 1, 1)
-            scale = min((w - 4) / tw, h * 0.6 / th)
-            (tw, th), _ = cv2.getTextSize(text, font, scale, 1)
-            cv2.putText(display.canvas, text, (x + (w - tw) // 2, y + (h + th) // 2), font, scale,
-                        (255, 255, 255), max(1, round(scale)), cv2.LINE_AA)
+            k = max(1, min((w - 4) // pixelfont.text_width(text), h * 3 // 5 // 5))
+            pixelfont.draw_text(display.canvas, x + (w - pixelfont.text_width(text, k)) // 2,
+                                y + (h - 5 * k) // 2, text, (255, 255, 255), k)
         until = time.monotonic() + 3
         hold(display.show, stop, min(until, deadline) if deadline else until)
 

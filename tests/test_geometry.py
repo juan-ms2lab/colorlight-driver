@@ -139,3 +139,22 @@ def test_ip_pattern_draws_on_each_display(make):
     stop.set()
     t.join()
     assert d.canvas[:32].any() and d.canvas[32:].any()
+
+
+def test_tiles_color_each_panel(make):
+    d = make(768, 128)
+    patterns.tiles(d, 128, 64)  # two rows of six 128x64 panels
+    C = patterns.PANEL_COLORS
+    assert tuple(d.canvas[0, 5]) == (255, 255, 255)  # seam
+    assert tuple(d.canvas[5, 5]) == C[0] and tuple(d.canvas[5, 133]) == C[1]
+    assert tuple(d.canvas[69, 5]) == C[6 % 8] and tuple(d.canvas[69, 767]) == C[11 % 8]
+
+
+def test_pixelfont_draws_and_clips():
+    import numpy as np
+    from ledpanels import pixelfont
+    c = np.zeros((5, 3, 3), np.uint8)
+    pixelfont.draw_text(c, 0, 0, "1", (255, 255, 255))
+    assert [int(b) for b in (c[..., 0] > 0).reshape(-1)] == [int(b) for b in pixelfont.GLYPHS["1"]]
+    pixelfont.draw_text(c, -2, 3, "88", (255, 0, 0), scale=2)  # partly off-canvas: no error
+    assert pixelfont.text_width("12", 3) == 21
